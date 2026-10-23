@@ -4,7 +4,7 @@ Shared folders are picked with the folder dialog, setting up an agent is part of
 
 ## Tasks
 
-- [ ] **P6-1 Picking a folder.**
+- [x] **P6-1 Picking a folder.**
   - "Add folder" opens the Windows folder dialog. The window sends the desk a `pick_folder` request, and the desk opens the dialog through a picker the app shell gives it at start. The picker is a crate such as `rfd`, not a Tauri plugin, and `main.json` stays as it is.
   - A path under `\\wsl.localhost\<distro>\` or `\\wsl$\<distro>\` is that distro's folder, and the rest is its Linux path.
   - The text box, the "which system" dropdown, the scan of `dev` folders and `Request::Suggestions` go.
