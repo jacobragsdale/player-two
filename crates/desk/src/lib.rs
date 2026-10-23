@@ -9,6 +9,7 @@ pub mod chats;
 pub mod files;
 pub mod hub;
 pub mod places;
+pub mod process;
 pub mod system;
 pub mod ui;
 

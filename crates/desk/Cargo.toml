@@ -8,11 +8,15 @@ publish.workspace = true
 agent-client-protocol = "3.5.0"
 anyhow = "1.0.104"
 player-two-core.workspace = true
+process-wrap = { version = "10.0.1", default-features = false, features = ["tokio1", "job-object", "process-group", "kill-on-drop", "creation-flags"] }
 reqwest = { version = "0.13.5", features = ["json"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 specta = { version = "=2.0.0-rc.27", features = ["derive"] }
 tokio = { version = "1.54.1", features = ["rt", "macros", "sync", "time", "fs", "process", "io-util"] }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = ["Win32_System_Threading"] }
 
 [dev-dependencies]
 axum = "0.8.9"
