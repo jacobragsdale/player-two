@@ -21,7 +21,7 @@ The hub hands out the app and keeps everyone on its version. This comes before a
   - Fill in `build.yaml`'s placeholder steps with the real commands: build the UI, run `cargo tauri build` with the updater's signing key from the variable group, build the hub, copy the installer into `deploy/release/`, then build and push the image.
   - Leave `TODO` only for the owner's internal names.
   - Fail the pipeline when the tag is not `v` followed by the workspace version.
-- [ ] **P3-6 The README.** Short sections on:
+- [x] **P3-6 The README.** Short sections on:
   - running a hub, with the manifests, the secrets and `join-code`;
   - releasing (bump the version, tag, run the pipeline, `kubectl set image`);
   - joining (download, install, paste the code).
