@@ -9,7 +9,7 @@ The whole hub, tested end to end and ready to deploy. [`protocol.md`](protocol.m
   - Open it with the pragmas in [Storage](protocol.md#storage), and refuse to start on a file that fails `quick_check`.
   - Build the schema, with `user_version` migrations.
   - Test that a damaged file is refused.
-- [ ] **P1-3 Joining.**
+- [x] **P1-3 Joining.**
   - `POST /join` checks the name and the join token, stores the SHA-256 of a new personal token, and refuses a taken name with the reset hint.
   - Bearer-token middleware sits on every person route.
 - [ ] **P1-4 Channels and direct chats.**

@@ -1,0 +1,204 @@
+//! The hub's HTTP API: its state, its routes, who is asking, and how it refuses.
+
+use std::sync::Arc;
+
+use axum::extract::rejection::JsonRejection;
+use axum::extract::{FromRequest, FromRequestParts, Request, State};
+use axum::http::StatusCode;
+use axum::http::request::Parts;
+use axum::response::{IntoResponse, Response};
+use axum::routing::post;
+use axum::{Json, Router};
+use player_two_core::api::{ApiError, JoinRequest, Joined};
+use player_two_core::names::PersonName;
+use rusqlite::OptionalExtension;
+use sha2::{Digest, Sha256};
+
+use crate::clock::Clock;
+use crate::db::Db;
+
+/// What the hub is told when it starts.
+#[derive(Debug, Clone)]
+pub struct Config {
+    /// The shared join token.
+    pub join_token: String,
+    /// The token for `/admin/*`.
+    pub admin_token: String,
+}
+
+/// What every request can reach.
+#[derive(Clone)]
+pub struct AppState {
+    /// The database.
+    pub db: Db,
+    /// The settings it started with.
+    pub config: Arc<Config>,
+    /// The time.
+    pub clock: Clock,
+}
+
+/// All of the hub's routes.
+pub fn router(state: AppState) -> Router {
+    Router::new().route("/join", post(join)).with_state(state)
+}
+
+/// A refusal: a status and words a person can act on.
+#[derive(Debug)]
+pub struct Refusal {
+    status: StatusCode,
+    error: String,
+}
+
+impl Refusal {
+    /// A refusal with this status and message.
+    pub fn new(status: StatusCode, error: impl Into<String>) -> Self {
+        Self {
+            status,
+            error: error.into(),
+        }
+    }
+}
+
+impl IntoResponse for Refusal {
+    fn into_response(self) -> Response {
+        (self.status, Json(ApiError { error: self.error })).into_response()
+    }
+}
+
+impl From<anyhow::Error> for Refusal {
+    fn from(error: anyhow::Error) -> Self {
+        // The detail is for whoever runs the hub; the caller learns only that it failed.
+        eprintln!("error: {error:#}");
+        Self::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "the hub failed; whoever runs it can see why in its log",
+        )
+    }
+}
+
+/// What a route gives back: its answer, or a refusal.
+pub type Reply<T> = Result<T, Refusal>;
+
+/// A JSON body, refused with the hub's own error shape when it does not parse.
+#[derive(Debug, Clone)]
+pub struct Input<T>(pub T);
+
+impl<T, S> FromRequest<S> for Input<T>
+where
+    Json<T>: FromRequest<S, Rejection = JsonRejection>,
+    S: Send + Sync,
+{
+    type Rejection = Refusal;
+
+    async fn from_request(request: Request, state: &S) -> Reply<Self> {
+        match Json::<T>::from_request(request, state).await {
+            Ok(Json(value)) => Ok(Self(value)),
+            Err(rejection) => Err(Refusal::new(StatusCode::BAD_REQUEST, rejection.body_text())),
+        }
+    }
+}
+
+/// The SHA-256 of a token, in hex, as the database keeps it.
+fn digest(token: &str) -> String {
+    Sha256::digest(token.as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+/// Whether `given` is `expected`, taking as long whatever the answer.
+fn same_token(given: &str, expected: &str) -> bool {
+    let (given, expected) = (Sha256::digest(given), Sha256::digest(expected));
+    given
+        .iter()
+        .zip(expected.iter())
+        .fold(0_u8, |differ, (a, b)| differ | (a ^ b))
+        == 0
+}
+
+/// A new personal token: 32 random bytes in hex.
+fn new_token() -> anyhow::Result<String> {
+    let mut bytes = [0_u8; 32];
+    getrandom::fill(&mut bytes).map_err(|error| anyhow::anyhow!("no randomness: {error}"))?;
+    Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
+/// The bearer token on a request, if it has one.
+fn bearer(parts: &Parts) -> Option<&str> {
+    parts
+        .headers
+        .get("authorization")?
+        .to_str()
+        .ok()?
+        .strip_prefix("Bearer ")
+}
+
+/// The person a request is from, by their personal token.
+#[derive(Debug, Clone)]
+pub struct Caller(pub PersonName);
+
+impl FromRequestParts<AppState> for Caller {
+    type Rejection = Refusal;
+
+    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Reply<Self> {
+        let refused = || {
+            Refusal::new(
+                StatusCode::UNAUTHORIZED,
+                "this machine is not joined to the hub; join again with a join code",
+            )
+        };
+        let token = digest(bearer(parts).ok_or_else(refused)?);
+        let name: Option<String> = state
+            .db
+            .call(move |connection| {
+                Ok(connection
+                    .query_row(
+                        "SELECT name FROM people WHERE token_sha256 = ?1",
+                        [&token],
+                        |row| row.get(0),
+                    )
+                    .optional()?)
+            })
+            .await?;
+        let name = name.ok_or_else(refused)?;
+        Ok(Self(PersonName::new(name).map_err(anyhow::Error::from)?))
+    }
+}
+
+/// `POST /join`.
+async fn join(
+    State(state): State<AppState>,
+    Input(request): Input<JoinRequest>,
+) -> Reply<Json<Joined>> {
+    if !same_token(&request.join_token, &state.config.join_token) {
+        return Err(Refusal::new(
+            StatusCode::FORBIDDEN,
+            "that join token is not this hub's; ask for a new join code",
+        ));
+    }
+    let token = new_token()?;
+    let digest = digest(&token);
+    let now = state.clock.now();
+    let name = request.name;
+    let joined = state
+        .db
+        .call(move |connection| {
+            // A name whose token was dropped by `reset` may be joined again; any other is taken.
+            let changed = connection.execute(
+                "INSERT INTO people (name, token_sha256, joined) VALUES (?1, ?2, ?3)
+                 ON CONFLICT (name) DO UPDATE SET token_sha256 = excluded.token_sha256
+                 WHERE people.token_sha256 IS NULL",
+                (name.as_str(), &digest, now),
+            )?;
+            Ok(changed == 1)
+        })
+        .await?;
+    if joined {
+        Ok(Json(Joined { token }))
+    } else {
+        Err(Refusal::new(
+            StatusCode::CONFLICT,
+            "that name is taken; if it is yours, an admin can run `player-two-hub reset NAME` to let you join again",
+        ))
+    }
+}

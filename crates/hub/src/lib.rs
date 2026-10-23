@@ -3,4 +3,6 @@
 //! The library is the whole hub; `main.rs` reads its settings and starts it, and the tests start
 //! it in-process.
 
+pub mod app;
+pub mod clock;
 pub mod db;
