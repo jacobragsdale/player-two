@@ -11,7 +11,10 @@ use player_two_desk::Desk;
 use player_two_desk::ui::{Event, Request, Response};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{App, AppHandle, Emitter, Manager, State, WindowEvent};
+use tauri::webview::NewWindowResponse;
+use tauri::{
+    App, AppHandle, Emitter, Manager, State, Url, WebviewUrl, WebviewWindowBuilder, WindowEvent,
+};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 
 /// The argument start at login passes, so the app starts in the tray rather than in front.
@@ -72,17 +75,49 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         }
     });
     app.manage(desk);
+    window(app, !std::env::args().any(|arg| arg == MINIMIZED))?;
     tray(app)?;
     // Starting at login is how requests reach a machine whose owner has not opened the app.
     if let Err(error) = app.autolaunch().enable() {
         eprintln!("error: cannot start at login: {error}");
     }
-    if std::env::args().any(|arg| arg == MINIMIZED)
-        && let Some(window) = app.get_webview_window("main")
-    {
-        window.hide()?;
-    }
     Ok(())
+}
+
+/// Whether a URL is the app's own page, which is all the window may show.
+fn own(url: &Url) -> bool {
+    url.scheme() == "tauri" || url.host_str() == Some("tauri.localhost")
+}
+
+/// The one window. It shows the app's own page and nothing else: a link someone wrote opens in
+/// the system's browser, if it is a web address at all, and never in the app.
+fn window(app: &App, visible: bool) -> tauri::Result<()> {
+    WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+        .title("Player Two")
+        .inner_size(1100.0, 720.0)
+        .min_inner_size(640.0, 420.0)
+        .visible(visible)
+        .on_navigation(|url| {
+            if !own(url) {
+                outside(url);
+            }
+            own(url)
+        })
+        .on_new_window(|url, _features| {
+            outside(&url);
+            NewWindowResponse::Deny
+        })
+        .build()?;
+    Ok(())
+}
+
+/// Opens a web address in the system's browser; anything else is dropped.
+fn outside(url: &Url) {
+    if matches!(url.scheme(), "http" | "https")
+        && let Err(error) = tauri_plugin_opener::open_url(url.as_str(), None::<&str>)
+    {
+        eprintln!("error: cannot open {url}: {error}");
+    }
 }
 
 /// The tray icon: a click opens the window, and its menu opens the window or quits the app.

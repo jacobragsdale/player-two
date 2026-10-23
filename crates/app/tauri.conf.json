@@ -6,16 +6,7 @@
     "frontendDist": "../../ui/dist"
   },
   "app": {
-    "windows": [
-      {
-        "label": "main",
-        "title": "Player Two",
-        "width": 1100,
-        "height": 720,
-        "minWidth": 640,
-        "minHeight": 420
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src ipc: http://ipc.localhost"
     }
