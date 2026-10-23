@@ -11,6 +11,8 @@ import { ask, problem } from "./deskClient.ts";
 import { Markdown } from "./Markdown.tsx";
 
 const MODE_WORDS = { "read-only": "read-only", ask: "asks before changes", full: "full" } as const;
+/** How many of its latest steps a working run shows. */
+const LATEST = 5;
 
 /** Where a run is, in words: someone's computer, a WSL distro of it, or one of their shared folders. */
 function whereItRuns(run: RunView, me: string): string {
@@ -118,6 +120,52 @@ function Prompt({ prompt, run, chat, me }: { readonly prompt: PromptView; readon
   );
 }
 
+/** What a run did: its latest steps while it works and none once it ends, with the rest a click away. */
+function Steps({ activity, working }: { readonly activity: readonly Activity[]; readonly working: boolean }): JSX.Element | null {
+  const [all, setAll] = useState(false);
+  const shown = all ? activity : working ? activity.slice(-LATEST) : [];
+  if (activity.length === 0) {
+    return null;
+  }
+  return (
+    <>
+      {shown.length > 0 && (
+        <ul className="my-1 space-y-0.5">
+          {shown.map((item) => (
+            <Item key={item.id} item={item} />
+          ))}
+        </ul>
+      )}
+      {shown.length < activity.length && (
+        <Button
+          type="button"
+          variant="link"
+          size="xs"
+          className="h-auto px-0 text-muted-foreground"
+          onClick={() => {
+            setAll(true);
+          }}
+        >
+          Show all {activity.length} {activity.length === 1 ? "step" : "steps"}
+        </Button>
+      )}
+      {all && (working ? activity.length > LATEST : activity.length > 0) && (
+        <Button
+          type="button"
+          variant="link"
+          size="xs"
+          className="h-auto px-0 text-muted-foreground"
+          onClick={() => {
+            setAll(false);
+          }}
+        >
+          Show fewer
+        </Button>
+      )}
+    </>
+  );
+}
+
 export function Run({ run, chat, me }: { readonly run: RunView; readonly chat: ChatId; readonly me: string }): JSX.Element {
   const [error, setError] = useState("");
   const stop = (): void => {
@@ -139,13 +187,7 @@ export function Run({ run, chat, me }: { readonly run: RunView; readonly chat: C
         )}
       </div>
       {error !== "" && <p className="text-xs text-destructive">{error}</p>}
-      {run.activity.length > 0 && (
-        <ul className="my-1 space-y-0.5">
-          {run.activity.map((item) => (
-            <Item key={item.id} item={item} />
-          ))}
-        </ul>
-      )}
+      <Steps activity={run.activity} working={run.state === "working"} />
       {run.prompts.map((prompt) => (
         <Prompt key={prompt.id} prompt={prompt} run={run} chat={chat} me={me} />
       ))}

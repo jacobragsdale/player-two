@@ -39,7 +39,7 @@ Shared folders are picked with the folder dialog, setting up an agent is part of
 - [x] **P6-11 The mode switch where it matters.** It shows under the message box only while the text tags one of your places, or in the thread of a run of yours.
 - [x] **P6-12 The asker can stop.** Whoever asked gets a Stop button that posts `run.stop`. The owner's desk stops the run as if the owner had pressed Stop, and the `run.ended` says who stopped it. The hub checks who may post it.
 - [x] **P6-13 Masking credentials.** Before posting `run.activity`, `run.prompt`, `run.result` or the reason of a `run.ended`, the owner's desk replaces with `****` the password in a URL's `user:password@`, and the value after `password=`, `token=` or `Authorization:`, in any case. Tests cover each, and show that ordinary text is left alone.
-- [ ] **P6-14 Shorter activity.** While a run works, its latest 5 steps show, and once it ends, none. "Show all N steps" shows the rest. Prompts and the answer always show.
+- [x] **P6-14 Shorter activity.** While a run works, its latest 5 steps show, and once it ends, none. "Show all N steps" shows the rest. Prompts and the answer always show.
 - [ ] **P6-15 Small things.**
   - The window opens the chat that was open when it was last closed.
   - The first time the window is closed, a notification says Player Two is still running in the tray.
