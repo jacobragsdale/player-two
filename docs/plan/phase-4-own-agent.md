@@ -4,13 +4,13 @@ You tag your own agent and watch it work, on Windows or in WSL. [Modes](protocol
 
 ## Tasks
 
-- [ ] **P4-1 Places.**
+- [x] **P4-1 Places.**
   - A settings page lists `machine` and the shared folders.
   - "Add folder" takes a Windows path, or a WSL path when WSL with an agent was found.
   - Suggestions come from scanning `~/dev` in each WSL distro and `%USERPROFILE%\dev`.
   - A folder is named after the last part of its `origin`. Lift the URL handling from v0.7.1's `src/core/remotes.ts`.
   - The desk advertises the places with `PUT /places`.
-- [ ] **P4-2 Finding agents.**
+- [x] **P4-2 Finding agents.**
   - On Windows, look on the `PATH` for `agent`, `copilot` and the Claude Code ACP adapter, including npm's `.cmd` shims.
   - In each distro from `wsl.exe -l -q`, check with `wsl.exe -d <distro> -- bash -lc 'command -v …'`.
   - Each place records its agent and where it runs.
