@@ -15,11 +15,11 @@ You tag your own agent and watch it work, on Windows or in WSL. [Modes](protocol
   - In each distro from `wsl.exe -l -q`, check with `wsl.exe -d <distro> -- bash -lc 'command -v …'`.
   - Each place records its agent and where it runs.
   - With no WSL, or no agent in it, nothing in the window mentions WSL.
-- [ ] **P4-3 Starting and stopping.**
+- [x] **P4-3 Starting and stopping.**
   - Start an agent with piped stdio, directly on Windows (resolving `.cmd` shims) or with `wsl.exe -d <distro> --cd <path> -- bash -lc 'exec …'`.
   - Stop kills the whole tree: with a Job Object on Windows (in `crates/win` only if no crate covers it), and with the process group elsewhere.
   - Tests use a child that starts a grandchild, and must pass on both systems.
-- [ ] **P4-4 ACP.** Use the `agent-client-protocol` crate:
+- [x] **P4-4 ACP.** Use the `agent-client-protocol` crate:
   - initialize, then open a session in the place's folder;
   - send the preamble from [Modes](protocol.md#modes) and the prompt;
   - turn session updates into activity items, with the verb-object-outcome wording lifted from v0.7.1's `src/desk/agents/activity.ts`;
