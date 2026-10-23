@@ -3,19 +3,20 @@
 use std::sync::Arc;
 
 use axum::extract::rejection::JsonRejection;
-use axum::extract::{FromRequest, FromRequestParts, Request, State};
+use axum::extract::{FromRequest, FromRequestParts, Path, Request, State};
 use axum::http::StatusCode;
 use axum::http::request::Parts;
 use axum::response::{IntoResponse, Response};
-use axum::routing::post;
+use axum::routing::{get, post};
 use axum::{Json, Router};
-use player_two_core::api::{ApiError, JoinRequest, Joined};
-use player_two_core::names::PersonName;
+use player_two_core::api::{ApiError, ChannelInfo, JoinRequest, Joined, NewChannel};
+use player_two_core::names::{ChannelName, PersonName};
 use rusqlite::OptionalExtension;
 use sha2::{Digest, Sha256};
 
 use crate::clock::Clock;
 use crate::db::Db;
+use crate::store;
 
 /// What the hub is told when it starts.
 #[derive(Debug, Clone)]
@@ -39,7 +40,12 @@ pub struct AppState {
 
 /// All of the hub's routes.
 pub fn router(state: AppState) -> Router {
-    Router::new().route("/join", post(join)).with_state(state)
+    Router::new()
+        .route("/join", post(join))
+        .route("/channels", get(list_channels).post(create_channel))
+        .route("/channels/{name}/join", post(join_channel))
+        .route("/channels/{name}/leave", post(leave_channel))
+        .with_state(state)
 }
 
 /// A refusal: a status and words a person can act on.
@@ -201,4 +207,76 @@ async fn join(
             "that name is taken; if it is yours, an admin can run `player-two-hub reset NAME` to let you join again",
         ))
     }
+}
+
+/// A channel name from a path, refused like any other bad input.
+fn channel_name(name: String) -> Reply<ChannelName> {
+    ChannelName::new(name).map_err(|error| Refusal::new(StatusCode::BAD_REQUEST, error.to_string()))
+}
+
+/// `GET /channels`.
+async fn list_channels(State(state): State<AppState>, _: Caller) -> Reply<Json<Vec<ChannelInfo>>> {
+    Ok(Json(
+        state
+            .db
+            .call(|connection| store::channels(connection))
+            .await?,
+    ))
+}
+
+/// `POST /channels`.
+async fn create_channel(
+    State(state): State<AppState>,
+    Caller(me): Caller,
+    Input(request): Input<NewChannel>,
+) -> Reply<StatusCode> {
+    let now = state.clock.now();
+    let name = request.name;
+    let made = state
+        .db
+        .call(move |connection| store::create_channel(connection, &name, &me, now))
+        .await?;
+    if made {
+        Ok(StatusCode::CREATED)
+    } else {
+        Err(Refusal::new(
+            StatusCode::CONFLICT,
+            "there is already a channel with that name; join it instead",
+        ))
+    }
+}
+
+/// `POST /channels/{name}/join`.
+async fn join_channel(
+    State(state): State<AppState>,
+    Caller(me): Caller,
+    Path(name): Path<String>,
+) -> Reply<StatusCode> {
+    let name = channel_name(name)?;
+    let joined = state
+        .db
+        .call(move |connection| store::join_channel(connection, &name, &me))
+        .await?;
+    if joined {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(Refusal::new(
+            StatusCode::NOT_FOUND,
+            "there is no channel with that name",
+        ))
+    }
+}
+
+/// `POST /channels/{name}/leave`.
+async fn leave_channel(
+    State(state): State<AppState>,
+    Caller(me): Caller,
+    Path(name): Path<String>,
+) -> Reply<StatusCode> {
+    let name = channel_name(name)?;
+    state
+        .db
+        .call(move |connection| store::leave_channel(connection, &name, &me))
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
