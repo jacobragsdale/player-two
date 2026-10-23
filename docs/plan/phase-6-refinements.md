@@ -13,7 +13,7 @@ Shared folders are picked with the folder dialog, setting up an agent is part of
 - [x] **P6-2 Renaming a place.**
   - Settings lets the owner rename a shared folder. The desk checks the name and advertises the places again.
   - The desk keeps each folder's former names in `settings.json`, so that a waiting request or a follow-up addressed to an old name still finds it. Tags read only current names, and no other folder is given a former name.
-- [ ] **P6-3 Advertising only what can run.**
+- [x] **P6-3 Advertising only what can run.**
   - `machine` is advertised when an agent was found on any system, and a folder when one was found on its system and the folder is there.
   - The desk keeps what it last found in `found.json` and advertises from it.
   - At start it looks on Windows only. It looks in WSL again only when Settings opens, an approval card appears or a run starts, so the app never boots WSL at login.
@@ -21,7 +21,7 @@ Shared folders are picked with the folder dialog, setting up an agent is part of
   - Settings keeps a folder that is gone, or whose distro has no agent, and marks it as not available.
 - [x] **P6-4 Tags that name nothing say why.** The line under the message says which it is: nobody has that name, the person does not share that place, or the person has no agent set up yet. A person with no places advertised has none.
 - [x] **P6-5 Choosing the agent.** When a system has more than one agent, Settings lets the owner choose which runs there, with Cursor the default when it was found. The choice is kept per system in `settings.json`. `custom_agent` stays a setting in the file only.
-- [ ] **P6-6 Setting up an agent.**
+- [x] **P6-6 Setting up an agent.**
   - After Join, one step that can be skipped asks which agent the person uses. Settings has the same section. An agent already installed is chosen for them, and the step goes straight to Check.
   - Cursor: a Set up button makes the desk run the official installer, `irm 'https://cursor.com/install?win32=true' | iex`, and shows what it prints. The command is fixed in the desk, never sent by the window. It is also shown to copy, for when the button fails.
   - Copilot: steps to copy, `winget install GitHub.Copilot`, and a note that it needs PowerShell 7.
@@ -32,7 +32,7 @@ Shared folders are picked with the folder dialog, setting up an agent is part of
 - [x] **P6-8 People.**
   - A direct chat's header shows whether the person is here, "last seen 2 h ago" when not, and the places they share.
   - The People list puts the people you have messaged first, most recent first, then everyone else by name.
-- [ ] **P6-9 Notifications for what waits on you.**
+- [x] **P6-9 Notifications for what waits on you.**
   - These notify too: a follow-up waiting for your click, a step waiting for your Allow (whether you own the run or were handed its steps), and the end of a run you asked for.
   - `Event::Open` carries the thread, and the window opens it.
 - [x] **P6-10 Run now.** When your own tag found its place busy, the waiting line gets a Run now button once the place is free. The button names the mode it will run at, which is your default when you click. There is still no queue.
@@ -40,7 +40,7 @@ Shared folders are picked with the folder dialog, setting up an agent is part of
 - [x] **P6-12 The asker can stop.** Whoever asked gets a Stop button that posts `run.stop`. The owner's desk stops the run as if the owner had pressed Stop, and the `run.ended` says who stopped it. The hub checks who may post it.
 - [x] **P6-13 Masking credentials.** Before posting `run.activity`, `run.prompt`, `run.result` or the reason of a `run.ended`, the owner's desk replaces with `****` the password in a URL's `user:password@`, and the value after `password=`, `token=` or `Authorization:`, in any case. Tests cover each, and show that ordinary text is left alone.
 - [x] **P6-14 Shorter activity.** While a run works, its latest 5 steps show, and once it ends, none. "Show all N steps" shows the rest. Prompts and the answer always show.
-- [ ] **P6-15 Small things.**
+- [x] **P6-15 Small things.**
   - The window opens the chat that was open when it was last closed.
   - The first time the window is closed, a notification says Player Two is still running in the tray.
   - Leaving a channel asks first.
