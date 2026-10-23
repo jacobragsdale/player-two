@@ -4,7 +4,7 @@ Every part exists, does nothing yet, and is checked on every push. Read [`../pla
 
 ## Tasks
 
-- [ ] **P0-1 The Cargo workspace.**
+- [x] **P0-1 The Cargo workspace.**
   - Make `Cargo.toml` at the root, with the crates `crates/core` (`player-two-core`), `crates/hub` (`player-two-hub`, a binary), `crates/desk` (`player-two-desk`) and `crates/app` (`player-two-app`), each a stub.
   - Add `rust-toolchain.toml` (stable, with clippy and rustfmt) and `rustfmt.toml` (`max_width = 100`). Edition 2024.
   - The Rust checks in `AGENTS.md` pass.

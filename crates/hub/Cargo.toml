@@ -1,0 +1,8 @@
+[package]
+name = "player-two-hub"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+player-two-core.workspace = true

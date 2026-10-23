@@ -1,0 +1,13 @@
+[workspace]
+resolver = "3"
+members = ["crates/core", "crates/hub", "crates/desk", "crates/app"]
+
+[workspace.package]
+# The one version number: the hub, the app and the UI all take theirs from here.
+version = "0.8.0"
+edition = "2024"
+publish = false
+
+[workspace.dependencies]
+player-two-core = { path = "crates/core" }
+player-two-desk = { path = "crates/desk" }
