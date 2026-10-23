@@ -316,6 +316,13 @@ runs_in: RunsIn } |
 { type: "remove_folder"; 
 /**  Its name. */
 name: PlaceName } | 
+/**
+ *  Starts the agent at a system and opens a session, to see that it is installed and
+ *  signed in.
+ */
+{ type: "check_agent"; 
+/**  Windows, or a WSL distro. */
+runs_in: RunsIn } | 
 /**  Sets where `@me` runs by default. */
 { type: "set_machine_runs_in"; 
 /**  Windows, or a WSL distro. */
@@ -326,13 +333,13 @@ export type Response =
 /**  The answer to [`Request::Hello`]. */
 ({ type: "hello"; 
 /**  The version the hub, the app and the desk all share. */
-version: string }) & { folders?: never; joined?: never; suggested_name?: never } | 
+version: string }) & { folders?: never; joined?: never; message?: never; ready?: never; suggested_name?: never } | 
 /**  The answer to [`Request::Setup`]. */
 ({ type: "setup"; 
 /**  The name this machine joined under, once it has. */
 joined: PersonName | null; 
 /**  The name to offer, from the Windows user name. */
-suggested_name: string | null }) & { folders?: never; version?: never } | 
+suggested_name: string | null }) & { folders?: never; message?: never; ready?: never; version?: never } | 
 /**  The answer to [`Request::Overview`]. */
 {
 	type: "overview",
@@ -345,12 +352,18 @@ suggested_name: string | null }) & { folders?: never; version?: never } |
 {
 	type: "places",
 } & PlacesView | 
+/**  The answer to [`Request::CheckAgent`]. */
+({ type: "checked"; 
+/**  Whether the agent opened a session. */
+ready: boolean; 
+/**  What was found, in words. */
+message: string }) & { folders?: never; joined?: never; suggested_name?: never; version?: never } | 
 /**  The answer to [`Request::Suggestions`]. */
 ({ type: "suggestions"; 
 /**  Checkouts not shared yet. */
-folders: Folder[] }) & { joined?: never; suggested_name?: never; version?: never } | 
+folders: Folder[] }) & { joined?: never; message?: never; ready?: never; suggested_name?: never; version?: never } | 
 /**  The request was done, and there is nothing more to say. */
-({ type: "done" }) & { folders?: never; joined?: never; suggested_name?: never; version?: never };
+({ type: "done" }) & { folders?: never; joined?: never; message?: never; ready?: never; suggested_name?: never; version?: never };
 
 /**  How a run stands. */
 export type RunState = 

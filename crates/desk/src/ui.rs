@@ -109,6 +109,12 @@ pub enum Request {
         /// Its name.
         name: PlaceName,
     },
+    /// Starts the agent at a system and opens a session, to see that it is installed and
+    /// signed in.
+    CheckAgent {
+        /// Windows, or a WSL distro.
+        runs_in: RunsIn,
+    },
     /// Sets where `@me` runs by default.
     SetMachineRunsIn {
         /// Windows, or a WSL distro.
@@ -138,6 +144,13 @@ pub enum Response {
     Chat(ChatView),
     /// The answer to [`Request::Places`].
     Places(PlacesView),
+    /// The answer to [`Request::CheckAgent`].
+    Checked {
+        /// Whether the agent opened a session.
+        ready: bool,
+        /// What was found, in words.
+        message: String,
+    },
     /// The answer to [`Request::Suggestions`].
     Suggestions {
         /// Checkouts not shared yet.

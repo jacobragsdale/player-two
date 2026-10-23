@@ -255,6 +255,30 @@ impl Desk {
                 self.save_settings(&settings).await?;
                 Ok(Response::Done)
             }
+            Request::CheckAgent { runs_in } => {
+                let found = self.find_agents().await?;
+                let Some(agent) = agents::for_system(&found, &runs_in) else {
+                    return Ok(Response::Checked {
+                        ready: false,
+                        message: "no agent is installed there".to_owned(),
+                    });
+                };
+                let (said, _heard) = tokio::sync::mpsc::unbounded_channel();
+                let checked = match acp::Session::open(agent, &agent.home, said).await {
+                    Ok(session) => {
+                        let _ = session.stop().await;
+                        Response::Checked {
+                            ready: true,
+                            message: format!("{} is ready", agent.kind.label()),
+                        }
+                    }
+                    Err(error) => Response::Checked {
+                        ready: false,
+                        message: format!("{error:#}"),
+                    },
+                };
+                Ok(checked)
+            }
             Request::SetMachineRunsIn { runs_in } => {
                 let mut settings = self.settings()?;
                 settings.machine_runs_in = runs_in;

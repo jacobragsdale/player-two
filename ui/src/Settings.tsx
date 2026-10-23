@@ -6,7 +6,7 @@ import type { JSX, SyntheticEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-import type { Folder, PlacesView, RunsIn } from "./desk.ts";
+import type { AgentInfo, AgentKind, Folder, PlacesView, RunsIn } from "./desk.ts";
 import { ask, problem } from "./deskClient.ts";
 
 const HEADING = "mt-6 mb-2 text-sm font-semibold";
@@ -46,6 +46,83 @@ function RunsInPicker({
         </option>
       ))}
     </select>
+  );
+}
+
+const LABELS: Readonly<Record<AgentKind, string>> = { cursor: "Cursor", copilot: "Copilot", claude: "Claude Code" };
+
+/** Text to copy, in a box the person can select, with a button that copies it. */
+function Command({ text }: { readonly text: string }): JSX.Element {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="my-1 flex items-center gap-2">
+      <code className="flex-1 rounded bg-muted px-2 py-1 font-mono text-xs select-all">{text}</code>
+      <Button
+        type="button"
+        variant="ghost"
+        size="xs"
+        onClick={() => {
+          navigator.clipboard.writeText(text).then(
+            () => {
+              setCopied(true);
+            },
+            () => {
+              setCopied(false);
+            }
+          );
+        }}
+      >
+        {copied ? "Copied" : "Copy"}
+      </Button>
+    </div>
+  );
+}
+
+/** One agent found, with a button that starts it to see that it is ready and signed in. */
+function AgentRow({ agent, wsl }: { readonly agent: AgentInfo; readonly wsl: boolean }): JSX.Element {
+  const [checking, setChecking] = useState(false);
+  const [result, setResult] = useState<{ readonly ready: boolean; readonly message: string } | null>(null);
+  const check = (): void => {
+    setChecking(true);
+    ask({ type: "check_agent", runs_in: agent.runs_in }).then(
+      (response) => {
+        setChecking(false);
+        if (response.type === "checked") {
+          setResult({ ready: response.ready, message: response.message });
+        }
+      },
+      (failure: unknown) => {
+        setChecking(false);
+        setResult({ ready: false, message: problem(failure) });
+      }
+    );
+  };
+  return (
+    <li className="py-1">
+      <div className="flex items-center gap-2">
+        <span className="font-medium">{LABELS[agent.kind]}</span>
+        {wsl && <span className="text-xs text-muted-foreground">on {where(agent.runs_in)}</span>}
+        <Button type="button" variant="ghost" size="xs" className="ml-auto" disabled={checking} onClick={check}>
+          {checking ? "Checking…" : "Check"}
+        </Button>
+      </div>
+      {result !== null && <p className={result.ready ? "text-xs text-emerald-700 dark:text-emerald-400" : "text-xs text-destructive"}>{result.message}</p>}
+    </li>
+  );
+}
+
+/** What to do when no agent is on Windows: install Cursor, sign in, and look again. */
+function NoAgent({ onLook }: { readonly onLook: () => void }): JSX.Element {
+  return (
+    <div className="rounded-md border p-3">
+      <p>No agent is installed on this computer yet. To install Cursor&rsquo;s, open PowerShell and run:</p>
+      <Command text="irm 'https://cursor.com/install?win32=true' | iex" />
+      <p>Then sign in with:</p>
+      <Command text="agent login" />
+      <Button type="button" variant="outline" size="sm" className="mt-2" onClick={onLook}>
+        Look again
+      </Button>
+    </div>
   );
 }
 
@@ -145,6 +222,21 @@ export function Settings({ me, onBack }: { readonly me: string; readonly onBack:
       </Button>
       <h1 className="mt-2 text-xl font-bold">Your places</h1>
       <p className="text-muted-foreground">Teammates can ask your agent for help at these places. Nothing runs until you say so.</p>
+
+      <h2 className={HEADING}>Your agent</h2>
+      {places.agents.some((agent) => agent.runs_in === "windows") ? null : (
+        <NoAgent
+          onLook={() => {
+            setPlaces(null);
+            load();
+          }}
+        />
+      )}
+      <ul>
+        {places.agents.map((agent) => (
+          <AgentRow key={`${agent.kind}:${agent.runs_in}`} agent={agent} wsl={wsl} />
+        ))}
+      </ul>
 
       <h2 className={HEADING}>Your machine</h2>
       <p className="flex items-center gap-2">
