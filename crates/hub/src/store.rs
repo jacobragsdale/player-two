@@ -1,8 +1,11 @@
 //! Reads and writes on the database, one function each, so the routes stay about HTTP.
 
+use anyhow::Context;
 use player_two_core::api::ChannelInfo;
+use player_two_core::event::{Body, Event, EventId};
 use player_two_core::names::{ChannelName, ChatId, PersonName};
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, Row};
+use serde_json::{Value, json};
 
 /// Whether `name` has joined the hub.
 pub fn has_joined(connection: &Connection, name: &PersonName) -> anyhow::Result<bool> {
@@ -118,6 +121,89 @@ pub fn may_use(connection: &Connection, chat: &ChatId, who: &PersonName) -> anyh
             Ok(chat.is_between(who) && has_joined(connection, them)?)
         }
     }
+}
+
+/// Stores an event and gives it back as readers will see it.
+pub fn insert_event(
+    connection: &Connection,
+    chat: &ChatId,
+    thread: Option<EventId>,
+    author: &PersonName,
+    body: &Body,
+    now: i64,
+) -> anyhow::Result<Event> {
+    let mut written = serde_json::to_value(body)?;
+    let content = written
+        .get_mut("body")
+        .map(Value::take)
+        .context("an event's body is written beside its kind")?;
+    connection.execute(
+        "INSERT INTO events (chat, thread, author, kind, body, ts) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        (
+            chat.to_string(),
+            thread.map(|thread| thread.0),
+            author.as_str(),
+            body.kind(),
+            content.to_string(),
+            now,
+        ),
+    )?;
+    Ok(Event {
+        id: EventId(connection.last_insert_rowid()),
+        chat: chat.clone(),
+        thread,
+        author: author.clone(),
+        ts: now,
+        body: body.clone(),
+    })
+}
+
+/// The columns [`read_event`] reads, in order.
+pub const EVENT_COLUMNS: &str = "id, chat, thread, author, kind, body, ts";
+
+/// Reads one row of [`EVENT_COLUMNS`] back into an event.
+pub fn read_event(row: &Row<'_>) -> anyhow::Result<Event> {
+    let kind: String = row.get(4)?;
+    let content: String = row.get(5)?;
+    let body: Body = serde_json::from_value(
+        json!({"kind": kind, "body": serde_json::from_str::<Value>(&content)?}),
+    )?;
+    Ok(Event {
+        id: EventId(row.get(0)?),
+        chat: ChatId::try_from(row.get::<_, String>(1)?)?,
+        thread: row.get::<_, Option<i64>>(2)?.map(EventId),
+        author: PersonName::new(row.get::<_, String>(3)?)?,
+        ts: row.get(6)?,
+        body,
+    })
+}
+
+/// One event by its id.
+pub fn event(connection: &Connection, id: EventId) -> anyhow::Result<Option<Event>> {
+    let mut statement =
+        connection.prepare(&format!("SELECT {EVENT_COLUMNS} FROM events WHERE id = ?1"))?;
+    let mut rows = statement.query([id.0])?;
+    rows.next()?.map(read_event).transpose()
+}
+
+/// Up to `limit` events of a chat from before `before` (or the newest), oldest first.
+pub fn page(
+    connection: &Connection,
+    chat: &ChatId,
+    before: Option<EventId>,
+    limit: u32,
+) -> anyhow::Result<Vec<Event>> {
+    let mut statement = connection.prepare(&format!(
+        "SELECT {EVENT_COLUMNS} FROM events WHERE chat = ?1 AND id < ?2 ORDER BY id DESC LIMIT ?3"
+    ))?;
+    let mut rows =
+        statement.query((chat.to_string(), before.map_or(i64::MAX, |id| id.0), limit))?;
+    let mut events = Vec::new();
+    while let Some(row) = rows.next()? {
+        events.push(read_event(row)?);
+    }
+    events.reverse();
+    Ok(events)
 }
 
 #[cfg(test)]

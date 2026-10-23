@@ -6,4 +6,5 @@
 pub mod app;
 pub mod clock;
 pub mod db;
+pub mod rules;
 pub mod store;

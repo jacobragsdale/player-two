@@ -3,19 +3,24 @@
 use std::sync::Arc;
 
 use axum::extract::rejection::JsonRejection;
-use axum::extract::{FromRequest, FromRequestParts, Path, Request, State};
+use axum::extract::{FromRequest, FromRequestParts, Path, Query, Request, State};
 use axum::http::StatusCode;
 use axum::http::request::Parts;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use player_two_core::api::{ApiError, ChannelInfo, JoinRequest, Joined, NewChannel};
-use player_two_core::names::{ChannelName, PersonName};
+use player_two_core::api::{
+    ApiError, ChannelInfo, JoinRequest, Joined, NewChannel, NewEvent, Posted,
+};
+use player_two_core::event::{Event, EventId};
+use player_two_core::names::{ChannelName, ChatId, PersonName};
 use rusqlite::OptionalExtension;
+use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
 use crate::clock::Clock;
 use crate::db::Db;
+use crate::rules::{self, Verdict};
 use crate::store;
 
 /// What the hub is told when it starts.
@@ -45,6 +50,8 @@ pub fn router(state: AppState) -> Router {
         .route("/channels", get(list_channels).post(create_channel))
         .route("/channels/{name}/join", post(join_channel))
         .route("/channels/{name}/leave", post(leave_channel))
+        .route("/chats/{chat}/events", get(chat_events))
+        .route("/events", post(post_event))
         .with_state(state)
 }
 
@@ -279,4 +286,69 @@ async fn leave_channel(
         .call(move |connection| store::leave_channel(connection, &name, &me))
         .await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// The most events one page may hold, and how many a page holds when the reader does not say.
+const PAGE_MOST: u32 = 200;
+const PAGE_USUAL: u32 = 50;
+
+/// `GET /chats/{chat}/events`'s query.
+#[derive(Debug, Deserialize)]
+struct PageQuery {
+    before: Option<i64>,
+    limit: Option<u32>,
+}
+
+/// `GET /chats/{chat}/events`.
+async fn chat_events(
+    State(state): State<AppState>,
+    Caller(me): Caller,
+    Path(chat): Path<String>,
+    Query(query): Query<PageQuery>,
+) -> Reply<Json<Vec<Event>>> {
+    let chat = ChatId::try_from(chat)
+        .map_err(|error| Refusal::new(StatusCode::BAD_REQUEST, error.to_string()))?;
+    let limit = query.limit.unwrap_or(PAGE_USUAL).clamp(1, PAGE_MOST);
+    let before = query.before.map(EventId);
+    let page = state
+        .db
+        .call(move |connection| {
+            if store::may_use(connection, &chat, &me)? {
+                Ok(Some(store::page(connection, &chat, before, limit)?))
+            } else {
+                Ok(None)
+            }
+        })
+        .await?;
+    page.map(Json)
+        .ok_or_else(|| Refusal::new(StatusCode::FORBIDDEN, "you are not in that chat"))
+}
+
+/// `POST /events`.
+async fn post_event(
+    State(state): State<AppState>,
+    Caller(me): Caller,
+    Input(new): Input<NewEvent>,
+) -> Reply<Json<Posted>> {
+    let now = state.clock.now();
+    let stored = state
+        .db
+        .call(move |connection| {
+            let transaction = connection.transaction()?;
+            if let Verdict::Refused(reason) = rules::may_post(&transaction, &new, &me)? {
+                return Ok(Err(reason));
+            }
+            let event =
+                store::insert_event(&transaction, &new.chat, new.thread, &me, &new.body, now)?;
+            transaction.commit()?;
+            Ok(Ok(event))
+        })
+        .await?;
+    match stored {
+        Ok(event) => Ok(Json(Posted {
+            id: event.id,
+            ts: event.ts,
+        })),
+        Err(reason) => Err(Refusal::new(StatusCode::FORBIDDEN, reason)),
+    }
 }

@@ -16,7 +16,7 @@ The whole hub, tested end to end and ready to deploy. [`protocol.md`](protocol.m
   - Create, join, leave and list channels.
   - Direct chat ids.
   - Who may read which chat.
-- [ ] **P1-5 Events.**
+- [x] **P1-5 Events.**
   - `POST /events` enforces the "who may post it" column of the [events table](protocol.md#events). That includes `run.answer` from the asker only when the run's `steps_by` is `asker`.
   - `GET /chats/{chat}/events` returns pages.
 - [ ] **P1-6 The stream.**
