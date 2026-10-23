@@ -451,8 +451,8 @@ impl Chats {
             .map(|(_, run)| run)
     }
 
-    /// The `@` mentions in a message that name nobody who has joined, or a place they do not
-    /// advertise, each as a line to show under it.
+    /// The `@` mentions in a message that name nobody who has joined, a place they do not
+    /// advertise, or someone with no agent set up, each as a line to show under it.
     fn unknown(&self, message: &Message) -> Vec<String> {
         let mut lines = Vec::new();
         for word in message.text.split_whitespace() {
@@ -478,6 +478,13 @@ impl Chats {
                 place,
             ) {
                 (None, _) => format!("nobody named {name} has joined"),
+                // Someone advertising nothing has no agent: a machine with one is advertised.
+                (Some(person), _) if person.places.is_empty() && person.name == self.me => {
+                    "you have not set up an agent yet; Settings shows how".to_owned()
+                }
+                (Some(person), _) if person.places.is_empty() => {
+                    format!("{name} has not set up an agent yet")
+                }
                 (Some(_), Some(place)) => format!("{name} does not share {place}"),
                 (Some(_), None) => continue,
             };
@@ -673,6 +680,33 @@ mod tests {
             .expect("a tag of alice is worth a notice");
         assert_eq!(title, "bob in #ops");
         assert_eq!(body.chars().count(), 201);
+    }
+
+    #[test]
+    fn a_tag_that_names_nothing_says_why() {
+        let (mut chats, ops, _) = chats();
+        let mut bob = person("bob");
+        bob.places.push(player_two_core::api::PlaceInfo {
+            name: player_two_core::names::PlaceName::machine(),
+            kind: player_two_core::api::PlaceKind::Machine,
+        });
+        chats.set_people(vec![person("alice"), bob, person("carol")]);
+        chats.apply(message(
+            1,
+            &ops,
+            "alice",
+            None,
+            "@carol, @alice, @bob/billing and @dave: help",
+        ));
+        assert_eq!(
+            chats.view(&ops, None).items[0].unknown,
+            [
+                "carol has not set up an agent yet",
+                "you have not set up an agent yet; Settings shows how",
+                "bob does not share billing",
+                "nobody named dave has joined",
+            ]
+        );
     }
 
     #[test]
