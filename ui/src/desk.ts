@@ -219,6 +219,16 @@ export type PlacesView = {
 	distros: string[],
 	/**  The agents found, and where. */
 	agents: AgentInfo[],
+	/**
+	 *  Agents installed in part on Windows: the Cursor editor without its agent, or Claude Code
+	 *  without its ACP adapter.
+	 */
+	half_installed: AgentKind[],
+	/**
+	 *  Whether there is a WSL distro, not counting Docker Desktop's, where an agent could be
+	 *  installed.
+	 */
+	wsl: boolean,
 };
 
 /**  One step a run asked about. */
@@ -318,6 +328,8 @@ to: string } |
 { type: "remove_folder"; 
 /**  Its name. */
 name: PlaceName } | 
+/**  Runs Cursor's official installer on Windows, then looks for the agent again. */
+{ type: "install_cursor" } | 
 /**  Chooses which agent runs at a system that has more than one. */
 { type: "choose_agent"; 
 /**  Windows, or a WSL distro. */
@@ -376,13 +388,13 @@ export type Response =
 /**  The answer to [`Request::Hello`]. */
 ({ type: "hello"; 
 /**  The version the hub, the app and the desk all share. */
-version: string }) & { choices?: never; dirty?: never; joined?: never; message?: never; ready?: never; runs_in?: never; suggested_name?: never } | 
+version: string }) & { choices?: never; dirty?: never; joined?: never; message?: never; ok?: never; output?: never; ready?: never; runs_in?: never; suggested_name?: never } | 
 /**  The answer to [`Request::Setup`]. */
 ({ type: "setup"; 
 /**  The name this machine joined under, once it has. */
 joined: PersonName | null; 
 /**  The name to offer, from the Windows user name. */
-suggested_name: string | null }) & { choices?: never; dirty?: never; message?: never; ready?: never; runs_in?: never; version?: never } | 
+suggested_name: string | null }) & { choices?: never; dirty?: never; message?: never; ok?: never; output?: never; ready?: never; runs_in?: never; version?: never } | 
 /**  The answer to [`Request::Overview`]. */
 {
 	type: "overview",
@@ -402,15 +414,21 @@ choices: RunsIn[];
 /**  Where it runs unless the owner picks another. */
 runs_in: RunsIn; 
 /**  Whether a git checkout has changes not committed, which an edit would run among. */
-dirty: boolean }) & { joined?: never; message?: never; ready?: never; suggested_name?: never; version?: never } | 
+dirty: boolean }) & { joined?: never; message?: never; ok?: never; output?: never; ready?: never; suggested_name?: never; version?: never } | 
+/**  The answer to [`Request::InstallCursor`]. */
+({ type: "installed"; 
+/**  Whether the installer said it succeeded. */
+ok: boolean; 
+/**  The end of what it printed. */
+output: string }) & { choices?: never; dirty?: never; joined?: never; message?: never; ready?: never; runs_in?: never; suggested_name?: never; version?: never } | 
 /**  The answer to [`Request::CheckAgent`]. */
 ({ type: "checked"; 
 /**  Whether the agent opened a session. */
 ready: boolean; 
 /**  What was found, in words. */
-message: string }) & { choices?: never; dirty?: never; joined?: never; runs_in?: never; suggested_name?: never; version?: never } | 
+message: string }) & { choices?: never; dirty?: never; joined?: never; ok?: never; output?: never; runs_in?: never; suggested_name?: never; version?: never } | 
 /**  The request was done, and there is nothing more to say. */
-({ type: "done" }) & { choices?: never; dirty?: never; joined?: never; message?: never; ready?: never; runs_in?: never; suggested_name?: never; version?: never };
+({ type: "done" }) & { choices?: never; dirty?: never; joined?: never; message?: never; ok?: never; output?: never; ready?: never; runs_in?: never; suggested_name?: never; version?: never };
 
 /**  How a run stands. */
 export type RunState = 

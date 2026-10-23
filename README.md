@@ -15,7 +15,9 @@ You need two things from whoever runs the hub: its download link and a join code
 
 Player Two starts with Windows and lives in the tray. Closing the window keeps it running; **Quit** in the tray icon's menu stops it.
 
-**Settings** shows the agent found on your computer, with a **Check** that it is signed in, or how to install Cursor's when there is none.
+Right after joining, Player Two helps you set up the agent it runs on your computer. **Set up Cursor** installs Cursor's agent for you, without admin rights; Copilot and Claude Code have steps to copy. You can skip it, and **Settings** has the same, with a **Check** that the agent is ready.
+
+If you work in WSL, install an agent inside your distro too, for Cursor's with `curl https://cursor.com/install -fsS | bash`, then press **Look again** in **Settings**.
 
 ## Using it
 

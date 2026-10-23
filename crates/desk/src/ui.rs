@@ -109,6 +109,8 @@ pub enum Request {
         /// Its name.
         name: PlaceName,
     },
+    /// Runs Cursor's official installer on Windows, then looks for the agent again.
+    InstallCursor,
     /// Chooses which agent runs at a system that has more than one.
     ChooseAgent {
         /// Windows, or a WSL distro.
@@ -197,6 +199,13 @@ pub enum Response {
         /// Whether a git checkout has changes not committed, which an edit would run among.
         dirty: bool,
     },
+    /// The answer to [`Request::InstallCursor`].
+    Installed {
+        /// Whether the installer said it succeeded.
+        ok: bool,
+        /// The end of what it printed.
+        output: String,
+    },
     /// The answer to [`Request::CheckAgent`].
     Checked {
         /// Whether the agent opened a session.
@@ -269,6 +278,12 @@ pub struct PlacesView {
     pub distros: Vec<String>,
     /// The agents found, and where.
     pub agents: Vec<AgentInfo>,
+    /// Agents installed in part on Windows: the Cursor editor without its agent, or Claude Code
+    /// without its ACP adapter.
+    pub half_installed: Vec<AgentKind>,
+    /// Whether there is a WSL distro, not counting Docker Desktop's, where an agent could be
+    /// installed.
+    pub wsl: bool,
 }
 
 /// One shared folder, as the settings page shows it.

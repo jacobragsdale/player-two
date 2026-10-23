@@ -286,6 +286,8 @@ impl Desk {
                     folders,
                     distros,
                     agents,
+                    half_installed: agents::half_installed(found).await,
+                    wsl: !system::distros().await.is_empty(),
                 }))
             }
             Request::PickFolder => {
@@ -313,6 +315,11 @@ impl Desk {
                 settings.folders.retain(|folder| folder.name != name);
                 self.save_settings(&settings).await?;
                 Ok(Response::Done)
+            }
+            Request::InstallCursor => {
+                let (ok, output) = agents::install_cursor().await?;
+                self.look(Where::Here).await?;
+                Ok(Response::Installed { ok, output })
             }
             Request::ChooseAgent { runs_in, kind } => {
                 let mut settings = self.settings()?;

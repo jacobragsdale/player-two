@@ -193,3 +193,17 @@ async fn the_agent_chosen_for_a_system_is_kept() {
     assert_eq!(places.agents.len(), 1);
     assert!(places.agents[0].chosen);
 }
+
+// On Windows this would run the real installer, and the tests need no network.
+#[cfg(not(windows))]
+#[tokio::test]
+async fn cursor_is_installed_from_here_on_windows_only() {
+    let hub = Hub::start().await;
+    let alice = hub.joined("alice").await;
+    let installed = alice.handle(Request::InstallCursor).await;
+    assert!(installed.is_err_and(|error| error.contains("Windows only")));
+    let Ok(Response::Places(places)) = alice.handle(Request::Places).await else {
+        panic!("the places are listed");
+    };
+    assert!(!places.wsl, "there is no WSL here");
+}

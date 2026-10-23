@@ -210,6 +210,62 @@ pub async fn here(custom: Option<&[String]>) -> Vec<Found> {
     }
 }
 
+/// The official install of Cursor's agent on Windows. The desk runs it, and only it, when the
+/// person presses Set up; the window never sends a command.
+pub const CURSOR_INSTALL: &str = "irm 'https://cursor.com/install?win32=true' | iex";
+
+/// How long the installer may take before it counts as stuck.
+const INSTALLING: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// The most of what the installer printed that is kept to show.
+const INSTALL_OUTPUT: usize = 4000;
+
+/// Runs Cursor's official installer in PowerShell, as the person, and gives back whether it
+/// succeeded and the end of what it printed.
+pub async fn install_cursor() -> anyhow::Result<(bool, String)> {
+    anyhow::ensure!(
+        cfg!(windows),
+        "Cursor's agent is installed from here on Windows only"
+    );
+    let mut command = system::command("powershell.exe");
+    command.args(["-NoProfile", "-NonInteractive", "-Command", CURSOR_INSTALL]);
+    let output = tokio::time::timeout(INSTALLING, command.output())
+        .await
+        .map_err(|_| anyhow::anyhow!("the installer was still going after five minutes"))??;
+    let printed = format!(
+        "{}{}",
+        system::text(&output.stdout),
+        system::text(&output.stderr)
+    );
+    let printed = printed.trim();
+    let start = printed
+        .char_indices()
+        .rev()
+        .nth(INSTALL_OUTPUT)
+        .map_or(0, |(at, _)| at);
+    Ok((output.status.success(), printed[start..].to_owned()))
+}
+
+/// The agents installed only in part on this system, so that the person can be told what is
+/// missing: the Cursor editor without its agent, or Claude Code without its ACP adapter.
+pub async fn half_installed(found: &[Found]) -> Vec<AgentKind> {
+    half_installed_on(&current_path().await, found)
+}
+
+/// [`half_installed`], on a given `PATH`.
+fn half_installed_on(path: &str, found: &[Found]) -> Vec<AgentKind> {
+    [(AgentKind::Cursor, "cursor"), (AgentKind::Claude, "claude")]
+        .into_iter()
+        .filter(|(kind, part)| {
+            search(path, part).is_some()
+                && !found
+                    .iter()
+                    .any(|agent| agent.kind == *kind && agent.runs_in == RunsIn::Windows)
+        })
+        .map(|(kind, _)| kind)
+        .collect()
+}
+
 /// The agent to run at a system: the one chosen there when it is found, or else the most
 /// preferred one found there.
 #[must_use]
@@ -228,7 +284,7 @@ pub fn for_system<'a>(
 mod tests {
     use player_two_core::event::RunsIn;
 
-    use super::{AgentKind, for_system, parse_distro, search};
+    use super::{AgentKind, for_system, half_installed_on, parse_distro, search};
 
     #[test]
     fn a_distros_agents_are_read_past_whatever_the_profile_printed() {
@@ -260,5 +316,32 @@ mod tests {
         let path = folder.path().to_string_lossy().into_owned();
         assert_eq!(search(&path, "agent"), Some(folder.path().join(name)));
         assert_eq!(search(&path, "copilot"), None);
+    }
+
+    #[test]
+    fn an_editor_without_its_agent_is_half_installed() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let ending = if cfg!(windows) { ".cmd" } else { "" };
+        for program in ["cursor", "claude", "claude-agent-acp"] {
+            std::fs::write(folder.path().join(format!("{program}{ending}")), "").expect("written");
+        }
+        let path = folder.path().to_string_lossy().into_owned();
+        let claude = super::Found {
+            kind: AgentKind::Claude,
+            runs_in: RunsIn::Windows,
+            program: "claude-agent-acp".to_owned(),
+            args: Vec::new(),
+            path: path.clone(),
+            home: String::new(),
+        };
+        assert_eq!(
+            half_installed_on(&path, &[claude]),
+            [AgentKind::Cursor],
+            "the adapter is there, so Claude Code is whole"
+        );
+        assert_eq!(
+            half_installed_on(&path, &[]),
+            [AgentKind::Cursor, AgentKind::Claude]
+        );
     }
 }
