@@ -8,7 +8,7 @@ Every part exists, does nothing yet, and is checked on every push. Read [`../pla
   - Make `Cargo.toml` at the root, with the crates `crates/core` (`player-two-core`), `crates/hub` (`player-two-hub`, a binary), `crates/desk` (`player-two-desk`) and `crates/app` (`player-two-app`), each a stub.
   - Add `rust-toolchain.toml` (stable, with clippy and rustfmt) and `rustfmt.toml` (`max_width = 100`). Edition 2024.
   - The Rust checks in `AGENTS.md` pass.
-- [ ] **P0-2 The UI.**
+- [x] **P0-2 The UI.**
   - `ui/` uses Vite, React, strict TypeScript, ESLint, Prettier, Tailwind and Vitest.
   - `npm run check` runs typecheck, lint, format check, test and build, in that order.
   - Lift the TypeScript, ESLint and Prettier settings from v0.7.1 (`tsconfig.json`, `eslint.config.mjs`, `prettier.config.mjs`), dropping what was there for Node and Electron. They must end up no weaker.

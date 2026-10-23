@@ -1,0 +1,5 @@
+dist/
+node_modules/
+package-lock.json
+# Written from Rust by the desk's tests.
+src/desk.ts
