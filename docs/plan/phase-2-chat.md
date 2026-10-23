@@ -15,7 +15,7 @@ The window becomes a chat people can use every day, without agents yet.
 - [x] **P2-4 The chat.**
   - The chat list, the open chat, threads and the message box.
   - Lift v0.7.1's `Sidebar`, `Thread`, `Message` and `Composer` (`src/window/renderer/`), cut down to what v1 has. Leave out reactions, edits, deletes, search and grants.
-- [ ] **P2-5 Safe rendering.**
+- [x] **P2-5 Safe rendering.**
   - A person's message is drawn as text.
   - An agent's Markdown is drawn with `react-markdown`, with raw HTML left as text and no image fetched.
   - Vitest tests show that `<script>`, raw HTML, `javascript:` links and remote images all render inert.
