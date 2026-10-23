@@ -1,78 +1,102 @@
-# Plan: one TypeScript codebase, and what we are borrowing
+# Plan
 
-Agreed on 2026-10-13. This page is the overview and the record of decisions. The work itself, task by task, is in [`plan/`](plan/README.md): start there to build.
+Agreed on 2026-10-22. This page says what Player Two is, what v1 holds and not, and the decisions behind it. The work, task by task, is in [`plan/`](plan/README.md).
 
-## What Player Two keeps as its own
+## What it is
 
-An agent is a person's checkout of a repo, and nothing runs on a machine unless its owner said so. Every phase must leave that true.
+A chat for a small team and the coding agents on their own Windows machines. It is for two things:
+
+- **Help with someone's machine.** A developer asks a less technical colleague's agent to fix their Python, their proxy settings or an install, and watches it work.
+- **Working on a project together.** You drive your own agent in a channel while teammates watch, comment and pick up from it. You can also ask a teammate's agent to work in their checkout.
+
+It runs inside one company network, among people who trust each other. The guardrails are there to catch mistakes, not to stop attackers.
+
+## The rule every phase keeps
+
+Nothing runs on a machine unless its owner said so, at a mode they chose, where they can watch it and stop it.
+
+## v1
+
+**People and chats**
+- Channels open to everyone on the hub, and direct chats between two people. Threads under a message.
+- Joining with a join code that an admin sends: it holds the hub's address and the join token. The name is prefilled from the Windows user name.
+- Presence, unread counts, notifications, a tray icon, and starting at login.
+
+**Agents**
+- `@bob` is Bob's machine. `@bob/repo` is one of the checkouts he chose to share.
+- Agents speak ACP. Cursor (`agent acp`) comes first. Copilot (`copilot --acp --stdio`) and Claude Code (through its ACP adapter) are alternatives.
+- The desk finds agents installed on Windows and in each WSL distro. Only people who have WSL with an agent in it ever see WSL mentioned.
+- A run has a mode: **read-only**, **ask** (each edit or command waits for a yes) or **full**.
+
+**Runs**
+- Your own tag, sent from your own window, runs at once at your default mode. The default starts at ask, and switching to full is one click that is remembered.
+- Anyone else's tag waits for your approval card. On it you choose:
+  - the mode;
+  - where it runs (Windows or a WSL distro, shown only when both apply).
+
+  The card also warns that everything the agent reads or prints is shown in the chat. In ask mode you can let the asker approve the steps.
+- A request is a thread with one agent session. Each follow-up needs your click, unless you let the asker keep going. That lasts until you press Stop or the thread has been quiet for an hour.
+- Each place runs one thing at a time.
+- Nothing runs elevated. UAC and `sudo` prompts stay yours to answer.
+- Edit requests run in your actual checkout. The card warns when it has uncommitted changes.
+
+**Hub**
+- One container and one SQLite file on NFS. Messages and runs are kept for 30 days, with a nightly backup.
+- Admin commands: `join-code` and `reset NAME`.
+
+**Shipping**
+- An unsigned, per-user Windows installer that the hub serves, along with updates. The hub and the app share one version number.
+- Releases are built by an Azure DevOps pipeline, [`build.yaml`](../build.yaml).
 
 ## Decisions
 
 | Decision | Choice | Why |
 |---|---|---|
-| Name | Player Two. The command, the package and the folders are `player-two`. | Renamed from deskmate on 2026-10-13. The code changes in task P0-E4, after Python is deleted. |
-| Client | TypeScript only. The Python interface and command are deleted. | One implementation of the wire format instead of two that must move together. |
-| Hub | Ported to Node and TypeScript. | It then shares its schemas and signing code with the client. It is about 300 lines, and phase 1 rewrites its core anyway. |
-| Desktop app | Electron, React, shadcn/ui. | The app exists and works; the styling moves in phase 0. |
-| Where it runs | On each person's cloud workstation: Windows 11, with the repos and the agent CLI inside WSL2 Ubuntu. | The window is a Windows app; everything that touches `~/dev` runs in WSL. |
-| Windows and WSL | Two processes: the window, and a headless "desk" that holds the session. The window starts the desk with `wsl.exe` and they exchange JSON lines over standard input and output. | Scanning, cloning and running agents happen in Linux, where the checkouts are. The window stays a real Windows app. No network port is opened. |
-| Agents | Cursor's command line and GitHub Copilot's, both inside WSL, driven over ACP: `agent acp` and `copilot --acp --stdio`. | They are what the team uses. |
-| Cursor's SDK | Not used, anywhere. | It does not work behind the team's proxy. Cursor is driven only through its command line. |
-| Hub deployment | One Docker container on AKS, one replica, the SQLite file on an Azure Disk volume. | The manifest already has this shape. A file share is not safe for SQLite. |
-| Source control | Azure DevOps, through its REST API, called from each person's desk with their own token. | The team's repos live there. The hub never holds a token. |
-| Storage | One SQLite file on the hub. | Right for a team. No Postgres, Redis or object store. |
+| Starting point | Wipe v0.7.1 in place and rebuild. Its code is under the tag `v0.7.1`, to lift from. | v0.7.1 was built on signed events, agent = repo, and a desk inside WSL. All three are reversed here. |
+| Platform | Windows only. Linux is for development and tests. | Everyone is on Windows. |
+| App shell | Tauri, on the WebView2 already on every machine. | Small installer, fast start, light in the tray. |
+| Languages | Rust for the hub, the desk and the shell. TypeScript and React for the window. | The wire format is written once, in Rust. Rust handles Windows processes well. |
+| Desk | A library crate that runs inside the app. The window reaches it through one Tauri command and one event. The types are generated with `specta`. | One process on the desktop. Later, a headless desk is a thin `main` over the same crate. |
+| Hub | Rust, with axum and rusqlite. One pod, one replica. | Small image, and it shares the wire types with the desk. |
+| Storage | One SQLite file on a static NFS volume with `Retain`. Exclusive locking with WAL, and only the hub opens it. | NFS is the only storage available. Exclusive mode keeps WAL's index in memory, off the share. |
+| Trust | The hub is trusted. Everyone has a personal token from joining. No signatures. | High-trust internal network. The owner's click is the guardrail, not cryptography. |
+| Agents | ACP only, through the `agent-client-protocol` crate. | Cursor, Copilot and Claude Code all speak it. |
+| Windows and WSL | The desk runs on Windows and starts WSL agents with `wsl.exe -d <distro> --cd <path>`. | Machine help needs a Windows process. Devs in WSL keep their repos there. |
+| Shared repos | An explicit list in the app, with suggestions from scanning `~/dev`. | Nothing is shared unless its owner said so. |
+| Versions | The hub and the app share one version number. An app that finds a different version on the hub updates first. | One team and one hub, so no compatibility matrix. |
+| Releases | An Azure DevOps pipeline builds the installer and the hub's image, which carries the installer. | That is where the company's registry and cluster are. |
+| CI | GitHub Actions on `windows-latest` only. | It is the only automated check of the platform everyone uses. |
+| Public repo | Nothing internal is committed: no hostname, no token, no company name. | The repository is public. |
 
-## The phases
+## Phases
 
 | Phase | What it delivers | File |
 |---|---|---|
-| 0. One language | Node hub, TypeScript command, desk and window split, WSL, the setup check, shadcn, a Windows installer, Python deleted | [`phase-0-one-language.md`](plan/phase-0-one-language.md) |
-| 1. Event log | Every action is a signed event with a kind; jobs; approvals become signed records; threads, reactions, edits; paging | [`phase-1-event-log.md`](plan/phase-1-event-log.md) |
-| 2. Search, command, MCP | Full-text search, Cmd+K, note links, `player-two ask`, an MCP server for agents in the editor | [`phase-2-search-cli-mcp.md`](plan/phase-2-search-cli-mcp.md) |
-| 3. ACP and permissions | Agents over ACP, permission modes, a live activity feed, permission cards | [`phase-3-acp-permissions.md`](plan/phase-3-acp-permissions.md) |
-| 4. Agent keys and grants | Agents sign their own answers; expiring standing approvals; tray and start at login | [`phase-4-agent-keys-grants.md`](plan/phase-4-agent-keys-grants.md) |
-| 5. Delegation | Agents can ask agents, with an owner or a grant at every hop | [`phase-5-delegation.md`](plan/phase-5-delegation.md) |
-| 6. Branch rooms and Azure DevOps | A room per branch; patches you apply after a confirmation; pull requests and builds | [`phase-6-branch-rooms-azure-devops.md`](plan/phase-6-branch-rooms-azure-devops.md) |
-| 7. Workflows | YAML triggers from messages, reactions, schedules and webhooks, gated by the normal approval queue | [`phase-7-workflows.md`](plan/phase-7-workflows.md) |
-
-[`plan/protocol.md`](plan/protocol.md) is the reference for the event format, the hub's API, the desk's protocol and the permission modes. [`plan/workstation-checklist.md`](plan/workstation-checklist.md) lists what only a Windows workstation can prove.
-
-## Where each borrowed idea went
-
-| Idea | From | Phase |
-|---|---|---|
-| The Linux runtime carried inside the Windows installer | T3 Code | 0 |
-| A setup check that gives the fixing command | T3 Code | 0 |
-| One signed event log, and a job lifecycle | Buzz | 1 |
-| Search with receipts, a command built for agents | Buzz | 2 |
-| An MCP server for agents the app did not start | T3 Code | 2 |
-| Agents over ACP, a verb-object-outcome activity feed | Buzz | 3 |
-| Named permission modes, and a ceiling on runs started for others | T3 Code | 3 |
-| Agent keys with owner attestation | Buzz | 4 |
-| Delegation between agents | Buzz | 5 |
-| Branch as room, patches as messages | Buzz | 6 |
-| Azure DevOps pull requests and builds | T3 Code | 6 |
-| YAML workflows | Buzz | 7 |
-
-## Changed since the first version of this plan
-
-- Reading one chat's history a page at a time moved from phase 0 to phase 1, where the store it reads from is rebuilt. Doing it in phase 0 would have meant writing it twice.
-- The job lifecycle is defined once, in phase 1. Phase 5 adds only delegation.
+| 0. Skeleton | The Cargo workspace, the UI, the Tauri shell, the desk boundary, Windows CI | [`phase-0-skeleton.md`](plan/phase-0-skeleton.md) |
+| 1. Hub | Joining, chats, events, the stream, admin, retention, backups, deploy | [`phase-1-hub.md`](plan/phase-1-hub.md) |
+| 2. Chat | The window as a chat: first run, chats, threads, safe rendering, tray, notifications | [`phase-2-chat.md`](plan/phase-2-chat.md) |
+| 3. Shipping | The installer, updates from the hub, the image, the release pipeline | [`phase-3-shipping.md`](plan/phase-3-shipping.md) |
+| 4. Your own agent | Places, finding agents, process control, ACP, modes, the activity feed, the setup check | [`phase-4-own-agent.md`](plan/phase-4-own-agent.md) |
+| 5. Asking others | Approval cards, handing over the steps, follow-ups, the full help-with-my-machine flow | [`phase-5-asking-others.md`](plan/phase-5-asking-others.md) |
 
 ## Not doing
 
-- Remote agents and replaceable agent bodies: the workstations are cloud machines that are already always on.
-- Queueing and steering messages to a running agent.
-- Git hosting, issues and a forge.
-- Nostr compatibility, several teams on one hub, voice, pooled GPU compute, a mobile app.
+- macOS and Linux apps.
+- Signed events, agent keys, an audit chain.
+- Standing grants, agents asking agents, workflows.
+- Branch rooms, patches, Azure DevOps pull requests and builds.
+- An MCP server, a command line for chatting, search, reactions, edits and deletes.
+- Single sign-on.
+- Running anything elevated, or handling a password.
+- One-shot agent modes; ACP only.
 
 ## Not decided
 
-Raised from T3 Code and neither accepted nor declined. Do not build these without asking:
+Raised but neither accepted nor declined. Do not build these without asking:
 
-- Showing only what one run changed, with a way to revert it.
-- Links that open a draft and never run anything.
-- Quoting part of an answer, with a comment, in a follow-up.
-- Folding consecutive tool calls into one line in the activity feed.
-- What teammates' requests cost the owner's quota.
-- Recording real agent sessions and replaying them in tests.
+- Deployed agents: a headless `player-two-desk` binary on a server, over the same desk crate.
+- Hiding secrets, such as proxy passwords and tokens, in a run's activity.
+- Search across chats.
+- An end-to-end test that drives the window.
+- Nightly rustfmt, for the style guide's import grouping.
+- Resuming an agent's own session after a restart, where the agent supports it.

@@ -1,16 +1,14 @@
-# Node
-node_modules/
-dist/
+# Rust
+target/
 
-# Local configuration and hub data
-.env
-.env.*
-!.env.example
+# The UI
+ui/node_modules/
+ui/dist/
+
+# Hub data
 *.db
 *.db-shm
 *.db-wal
 
-# Downloads kept between builds: Node for the Linux runtime
-.cache/
-# What electron-builder makes
-release/
+# The installer, copied in before the hub's image is built
+deploy/release/

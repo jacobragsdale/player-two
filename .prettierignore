@@ -1,6 +1,0 @@
-dist/
-node_modules/
-package-lock.json
-test/fixtures/
-# Prose keeps its compact tables; the formatter would re-pad every one.
-*.md

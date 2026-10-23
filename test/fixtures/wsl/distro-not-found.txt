@@ -1,2 +1,0 @@
-There is no distribution with the supplied name.
-Error code: Wsl/Service/WSL_E_DISTRO_NOT_FOUND
