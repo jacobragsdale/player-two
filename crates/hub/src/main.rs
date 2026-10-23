@@ -1,4 +1,4 @@
-//! The hub: one server the team shares, holding its chats in one SQLite file.
+//! `player-two-hub`: runs the hub, or asks a running one to do an admin task.
 
 fn main() {
     println!("player-two-hub {}", env!("CARGO_PKG_VERSION"));
