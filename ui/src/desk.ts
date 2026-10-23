@@ -119,21 +119,6 @@ body: string } |
 /**  Which. */
 chat: ChatId };
 
-/**  One shared folder. */
-export type Folder = {
-	/**  The name it is tagged by: `@me/name`. */
-	name: PlaceName,
-	/**  Where it is, as a Windows path, or a Linux one inside its distro. */
-	path: string,
-	/**  Which system it is on. */
-	runs_in: RunsIn,
-	/**
-	 *  The names it had before it was renamed, which still reach it from older requests and
-	 *  threads. No other folder is given one.
-	 */
-	former?: PlaceName[],
-};
-
 /**  One message as the window draws it. */
 export type Item = {
 	/**  Its id. */
@@ -227,7 +212,7 @@ export type PlacesView = {
 	/**  Where `@me` runs by default. */
 	machine_runs_in: RunsIn,
 	/**  The folders shared. */
-	folders: Folder[],
+	folders: SharedFolder[],
 	/**  The WSL distros with an agent in them; none without WSL, or with no agent in it. */
 	distros: string[],
 	/**  The agents found, and where. */
@@ -464,6 +449,18 @@ export type RunView = {
 
 /**  Where on a machine a run happens: `windows`, or `wsl:<distro>`. */
 export type RunsIn = string;
+
+/**  One shared folder, as the settings page shows it. */
+export type SharedFolder = {
+	/**  The name it is tagged by. */
+	name: PlaceName,
+	/**  Where it is, as a Windows path, or a Linux one inside its distro. */
+	path: string,
+	/**  Which system it is on. */
+	runs_in: RunsIn,
+	/**  Why it cannot run now, when it cannot. It is not advertised until it can. */
+	unavailable: string | null,
+};
 
 /**  Who answers a run's steps in ask mode. */
 export type StepsBy = 

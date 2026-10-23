@@ -7,8 +7,6 @@ use common::{Hub, chat, overview};
 use player_two_core::event::Mode;
 use player_two_core::names::ChatId;
 use player_two_desk::Desk;
-use player_two_desk::files::Files;
-use player_two_desk::places::Settings;
 use player_two_desk::ui::{ChatView, Item, Request, Response, RunState};
 
 const CHAT: &str = "#ops";
@@ -20,13 +18,7 @@ fn id(chat: &str) -> ChatId {
 /// A desk joined as alice, in #ops, whose agent is the fake one.
 async fn alice(hub: &Hub) -> Desk {
     let desk = hub.joined("alice").await;
-    let settings = Settings {
-        custom_agent: Some(vec![env!("CARGO_BIN_EXE_fake-acp-agent").to_owned()]),
-        ..Settings::default()
-    };
-    Files::new(hub.folder("alice"))
-        .write("settings.json", &settings)
-        .expect("written");
+    common::fake_agent(hub, &desk, "alice").await;
     assert_eq!(
         desk.handle(Request::CreateChannel {
             name: "ops".to_owned()

@@ -9,6 +9,8 @@ use player_two_core::event::EventId;
 use player_two_core::join_code::JoinCode;
 use player_two_core::names::ChatId;
 use player_two_desk::Desk;
+use player_two_desk::files::Files;
+use player_two_desk::places::Settings;
 use player_two_desk::ui::{ChatView, Connection, Overview, Request, Response};
 use player_two_hub::app::{AppState, Config, router};
 use player_two_hub::clock::Clock;
@@ -102,6 +104,30 @@ impl Hub {
             .expect("the hub answers");
         assert!(answer.status().is_success());
     }
+}
+
+/// Makes the scripted fake agent the only agent of the desk joined as `name`, and waits until
+/// the hub lists that person's machine.
+pub async fn fake_agent(hub: &Hub, desk: &Desk, name: &str) {
+    let settings = Settings {
+        custom_agent: Some(vec![env!("CARGO_BIN_EXE_fake-acp-agent").to_owned()]),
+        ..Settings::default()
+    };
+    Files::new(hub.folder(name))
+        .write("settings.json", &settings)
+        .expect("written");
+    // Opening Settings looks for the agents again, and advertises what can run.
+    assert!(matches!(
+        desk.handle(Request::Places).await,
+        Ok(Response::Places(_))
+    ));
+    until(desk, "the machine to be advertised", |overview| {
+        overview
+            .people
+            .iter()
+            .any(|person| person.name.as_str() == name && !person.places.is_empty())
+    })
+    .await;
 }
 
 /// The desk's overview.

@@ -8,8 +8,6 @@ use common::{Hub, chat};
 use player_two_core::event::{Mode, RunsIn, StepsBy};
 use player_two_core::names::{ChatId, PlaceName};
 use player_two_desk::Desk;
-use player_two_desk::files::Files;
-use player_two_desk::places::Settings;
 use player_two_desk::ui::{ChatView, Item, Request, Response, RunState};
 
 const CHAT: &str = "#help";
@@ -63,13 +61,7 @@ async fn three(hub: &Hub) -> (Desk, Desk, Desk) {
     let alice = hub.joined("alice").await;
     let jacob = hub.joined("jacob").await;
     let carol = hub.joined("carol").await;
-    let settings = Settings {
-        custom_agent: Some(vec![env!("CARGO_BIN_EXE_fake-acp-agent").to_owned()]),
-        ..Settings::default()
-    };
-    Files::new(hub.folder("alice"))
-        .write("settings.json", &settings)
-        .expect("written");
+    common::fake_agent(hub, &alice, "alice").await;
     assert_eq!(
         alice
             .handle(Request::CreateChannel {
@@ -88,14 +80,6 @@ async fn three(hub: &Hub) -> (Desk, Desk, Desk) {
         );
     }
     // Alice's machine is advertised, so a tag of her reads as one.
-    assert_eq!(
-        alice
-            .handle(Request::SetMachineRunsIn {
-                runs_in: RunsIn::Windows
-            })
-            .await,
-        Ok(Response::Done)
-    );
     common::until(&jacob, "alice's places", |overview| {
         overview
             .people

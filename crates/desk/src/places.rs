@@ -7,9 +7,8 @@ use player_two_core::api::{PlaceInfo, PlaceKind};
 use player_two_core::event::{Mode, RunsIn};
 use player_two_core::names::PlaceName;
 use serde::{Deserialize, Serialize};
-use specta::Type;
 
-use crate::system;
+use crate::{agents, system};
 
 /// The person's settings.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -49,7 +48,7 @@ fn windows() -> RunsIn {
 }
 
 /// One shared folder.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Folder {
     /// The name it is tagged by: `@me/name`.
     pub name: PlaceName,
@@ -61,6 +60,42 @@ pub struct Folder {
     /// threads. No other folder is given one.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub former: Vec<PlaceName>,
+}
+
+/// What the desk found when it last looked, kept in `found.json`: the agents on each system, and
+/// the shared folders that were not there. The places advertised follow from it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Looked {
+    /// The agents found, on Windows and in each WSL distro.
+    pub agents: Vec<agents::Found>,
+    /// The shared folders not there, by their system and path.
+    pub missing: Vec<(RunsIn, String)>,
+}
+
+impl Looked {
+    /// Why a shared folder cannot run now, if it cannot: it is gone, or there is no agent on its
+    /// system.
+    #[must_use]
+    pub fn unavailable(&self, folder: &Folder) -> Option<String> {
+        if self
+            .missing
+            .iter()
+            .any(|(runs_in, path)| runs_in == &folder.runs_in && path == &folder.path)
+        {
+            return Some("the folder is not there any more".to_owned());
+        }
+        if self
+            .agents
+            .iter()
+            .any(|agent| agent.runs_in == folder.runs_in)
+        {
+            return None;
+        }
+        Some(match &folder.runs_in {
+            RunsIn::Windows => "there is no agent on Windows".to_owned(),
+            RunsIn::Wsl(distro) => format!("there is no agent in {distro}"),
+        })
+    }
 }
 
 impl Settings {
@@ -123,18 +158,27 @@ impl Settings {
         Ok(())
     }
 
-    /// What the hub lists of the person's places: the machine, and each folder by name.
+    /// What the hub lists of the person's places: the places that can run. That is the machine
+    /// when an agent was found anywhere, and each folder that is there with an agent on its
+    /// system.
     #[must_use]
-    pub fn advertised(&self) -> Vec<PlaceInfo> {
+    pub fn advertised(&self, looked: &Looked) -> Vec<PlaceInfo> {
+        if looked.agents.is_empty() {
+            return Vec::new();
+        }
         let machine = PlaceInfo {
             name: PlaceName::machine(),
             kind: PlaceKind::Machine,
         };
-        let repos = self.folders.iter().map(|folder| PlaceInfo {
-            name: folder.name.clone(),
-            kind: PlaceKind::Repo,
-        });
-        std::iter::once(machine).chain(repos).collect()
+        let folders = self
+            .folders
+            .iter()
+            .filter(|folder| looked.unavailable(folder).is_none())
+            .map(|folder| PlaceInfo {
+                name: folder.name.clone(),
+                kind: PlaceKind::Repo,
+            });
+        std::iter::once(machine).chain(folders).collect()
     }
 }
 
@@ -286,7 +330,8 @@ mod tests {
     use player_two_core::event::RunsIn;
     use player_two_core::names::PlaceName;
 
-    use super::{Folder, Settings, located, name_for, name_from_remote, quoted};
+    use super::{Folder, Looked, Settings, located, name_for, name_from_remote, quoted};
+    use crate::agents;
 
     #[test]
     fn a_checkout_is_named_by_its_remote() {
@@ -329,11 +374,56 @@ mod tests {
     }
 
     #[test]
-    fn the_machine_comes_first_in_what_is_advertised() {
-        let settings = Settings::default();
-        let advertised = settings.advertised();
-        assert_eq!(advertised.len(), 1);
-        assert!(advertised[0].name.is_machine());
+    fn only_places_that_can_run_are_advertised() {
+        let place = |name: &str| PlaceName::new(name).expect("a name");
+        let ubuntu = RunsIn::Wsl("Ubuntu".to_owned());
+        let folder = |name: &str, runs_in: &RunsIn| Folder {
+            name: place(name),
+            path: format!("/{name}"),
+            runs_in: runs_in.clone(),
+            former: Vec::new(),
+        };
+        let settings = Settings {
+            folders: vec![
+                folder("here", &RunsIn::Windows),
+                folder("gone", &RunsIn::Windows),
+                folder("linux", &ubuntu),
+            ],
+            ..Settings::default()
+        };
+        let agent = |runs_in: &RunsIn| agents::Found {
+            kind: agents::AgentKind::Cursor,
+            runs_in: runs_in.clone(),
+            program: "agent".to_owned(),
+            args: Vec::new(),
+            path: String::new(),
+            home: String::new(),
+        };
+        let names = |looked: &Looked| -> Vec<String> {
+            settings
+                .advertised(looked)
+                .into_iter()
+                .map(|info| info.name.to_string())
+                .collect()
+        };
+        assert!(names(&Looked::default()).is_empty(), "no agent, no places");
+        let mut looked = Looked {
+            agents: vec![agent(&RunsIn::Windows)],
+            missing: vec![(RunsIn::Windows, "/gone".to_owned())],
+        };
+        assert_eq!(names(&looked), ["machine", "here"]);
+        assert_eq!(
+            looked.unavailable(&settings.folders[1]).as_deref(),
+            Some("the folder is not there any more")
+        );
+        assert_eq!(
+            looked.unavailable(&settings.folders[2]).as_deref(),
+            Some("there is no agent in Ubuntu")
+        );
+        looked.agents.push(agent(&ubuntu));
+        assert_eq!(names(&looked), ["machine", "here", "linux"]);
+        looked.agents.retain(|found| found.runs_in == ubuntu);
+        assert_eq!(names(&looked), ["machine", "linux"]);
     }
 
     #[test]

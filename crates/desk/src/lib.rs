@@ -10,6 +10,7 @@ pub mod agents;
 pub mod chats;
 pub mod files;
 pub mod hub;
+mod looking;
 pub mod places;
 pub mod process;
 pub mod runs;
@@ -27,14 +28,15 @@ use anyhow::Context;
 use chats::Chats;
 use files::{Files, Identity};
 use hub::{Hub, Incoming, NotJoined};
-use places::{Folder, Settings};
-use player_two_core::api::NewEvent;
+use looking::Where;
+use places::{Folder, Looked, Settings};
+use player_two_core::api::{NewEvent, PlaceInfo};
 use player_two_core::event::RunsIn;
 use player_two_core::event::{Body, Event, EventId, Message, Mode, RunAnswer, StepsBy};
 use player_two_core::join_code::JoinCode;
 use player_two_core::names::{ChannelName, ChatId, PersonName};
 use tokio::sync::{Notify, mpsc};
-use ui::{AgentInfo, Connection, Overview, PlacesView, Request, Response};
+use ui::{AgentInfo, Connection, Overview, PlacesView, Request, Response, SharedFolder};
 
 /// How many events one page from the hub holds.
 const PAGE: u32 = 100;
@@ -101,8 +103,10 @@ impl std::fmt::Debug for Inner {
 #[derive(Debug)]
 struct State {
     connection: Connection,
-    /// The agents found when last looked for.
-    agents: Vec<agents::Found>,
+    /// What was found when the desk last looked, once read or looked for.
+    looked: Option<Looked>,
+    /// The places the hub was last told of on this connection.
+    advertised: Option<Vec<PlaceInfo>>,
     hub: Option<Hub>,
     chats: Option<Chats>,
 }
@@ -118,7 +122,8 @@ impl Desk {
             events,
             state: Mutex::new(State {
                 connection: Connection::Connecting,
-                agents: Vec::new(),
+                looked: None,
+                advertised: None,
                 hub: None,
                 chats: None,
             }),
@@ -242,8 +247,9 @@ impl Desk {
             }
             Request::Update => anyhow::bail!("updates are installed by the app, not the desk"),
             Request::Places => {
+                let looked = self.look(Where::Everywhere).await?;
                 let settings = self.settings()?;
-                let found = self.find_agents().await?;
+                let found = &looked.agents;
                 let mut distros: Vec<String> = found
                     .iter()
                     .filter_map(|agent| match &agent.runs_in {
@@ -252,9 +258,19 @@ impl Desk {
                     })
                     .collect();
                 distros.dedup();
+                let folders = settings
+                    .folders
+                    .iter()
+                    .map(|folder| SharedFolder {
+                        name: folder.name.clone(),
+                        path: folder.path.clone(),
+                        runs_in: folder.runs_in.clone(),
+                        unavailable: looked.unavailable(folder),
+                    })
+                    .collect();
                 Ok(Response::Places(PlacesView {
                     machine_runs_in: settings.machine_runs_in,
-                    folders: settings.folders,
+                    folders,
                     distros,
                     agents: found
                         .iter()
@@ -292,7 +308,7 @@ impl Desk {
                 Ok(Response::Done)
             }
             Request::CheckAgent { runs_in } => {
-                let found = self.find_agents().await?;
+                let found = self.look(Where::At(runs_in.clone())).await?.agents;
                 let Some(agent) = agents::for_system(&found, &runs_in) else {
                     return Ok(Response::Checked {
                         ready: false,
@@ -381,25 +397,15 @@ impl Desk {
         }
     }
 
-    /// Looks for the agents installed, and keeps what it found for the runs to come.
-    async fn find_agents(&self) -> anyhow::Result<Vec<agents::Found>> {
-        let custom = self.settings()?.custom_agent;
-        let found = agents::everywhere(custom.as_deref()).await;
-        self.state().agents.clone_from(&found);
-        Ok(found)
-    }
-
     /// The person's settings, or the defaults until they change one.
     fn settings(&self) -> anyhow::Result<Settings> {
         Ok(self.inner.files.read("settings.json")?.unwrap_or_default())
     }
 
-    /// Keeps the settings, and tells the hub the places in them.
+    /// Keeps the settings, and tells the hub the places in them that can run.
     async fn save_settings(&self, settings: &Settings) -> anyhow::Result<()> {
         self.inner.files.write("settings.json", settings)?;
-        if let Ok(hub) = self.hub() {
-            hub.set_places(&settings.advertised()).await?;
-        }
+        self.advertise().await?;
         self.tell(ui::Event::Overview);
         Ok(())
     }
@@ -423,10 +429,13 @@ impl Desk {
         settings.folders.push(Folder {
             name,
             path,
-            runs_in,
+            runs_in: runs_in.clone(),
             former: Vec::new(),
         });
-        self.save_settings(&settings).await
+        self.save_settings(&settings).await?;
+        // A folder in a distro not looked in yet is advertised once its agent is found.
+        self.look(Where::At(runs_in)).await?;
+        Ok(())
     }
 
     /// One event of a chat, as the desk has it.
@@ -449,7 +458,7 @@ impl Desk {
     ) -> anyhow::Result<Response> {
         let settings = self.settings()?;
         if place.is_machine() {
-            let found = self.find_agents().await?;
+            let found = self.look(Where::Everywhere).await?.agents;
             let mut choices: Vec<RunsIn> = Vec::new();
             for agent in &found {
                 if !choices.contains(&agent.runs_in) {
@@ -470,6 +479,7 @@ impl Desk {
         let folder = settings
             .folder(place)
             .context("that place is not shared any more")?;
+        self.look(Where::At(folder.runs_in.clone())).await?;
         let dirty = places::dirty(&folder.path, &folder.runs_in).await;
         Ok(Response::Approval {
             choices: vec![folder.runs_in.clone()],
@@ -825,11 +835,15 @@ impl Desk {
         if version != env!("CARGO_PKG_VERSION") {
             return Err(WrongVersion(version).into());
         }
-        hub.set_places(&self.settings()?.advertised()).await?;
-        let (channels, people) = (hub.channels().await?, hub.people().await?);
         {
             let mut state = self.state();
             state.hub = Some(hub.clone());
+            state.advertised = None;
+        }
+        self.look(Where::Here).await?;
+        let (channels, people) = (hub.channels().await?, hub.people().await?);
+        {
+            let mut state = self.state();
             let read: BTreeMap<ChatId, EventId> =
                 self.inner.files.read("read.json")?.unwrap_or_default();
             let chats = state

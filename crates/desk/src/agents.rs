@@ -60,7 +60,7 @@ impl AgentKind {
 }
 
 /// An agent found, ready to start.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Found {
     /// Which agent.
     pub kind: AgentKind,
@@ -194,10 +194,10 @@ fn parse_distro(distro: &str, said: &str) -> Vec<Found> {
         .collect()
 }
 
-/// Every agent installed: on this system, then in each WSL distro. An agent of the person's own
-/// choosing, a program and its arguments, stands in for any found on this system.
-pub async fn everywhere(custom: Option<&[String]>) -> Vec<Found> {
-    let mut found = match custom {
+/// The agents on this system itself. An agent of the person's own choosing, a program and its
+/// arguments, stands in for any found.
+pub async fn here(custom: Option<&[String]>) -> Vec<Found> {
+    match custom {
         Some([program, args @ ..]) => vec![Found {
             kind: AgentKind::Cursor,
             runs_in: RunsIn::Windows,
@@ -207,11 +207,7 @@ pub async fn everywhere(custom: Option<&[String]>) -> Vec<Found> {
             home: home(),
         }],
         _ => on_this_system().await,
-    };
-    for distro in system::distros().await {
-        found.extend(in_distro(&distro).await);
     }
-    found
 }
 
 /// The agent to run at a system: the most preferred one found there.

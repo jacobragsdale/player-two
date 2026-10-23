@@ -45,7 +45,10 @@ pub fn text(bytes: &[u8]) -> String {
     }
 }
 
-/// The WSL distros installed, by name. None on a system without WSL.
+/// Docker Desktop's own distros, which hold no one's work and are never searched or offered.
+const DOCKER_DESKTOP: [&str; 2] = ["docker-desktop", "docker-desktop-data"];
+
+/// The WSL distros installed, by name, but for Docker Desktop's. None on a system without WSL.
 pub async fn distros() -> Vec<String> {
     if !cfg!(windows) {
         return Vec::new();
@@ -54,14 +57,22 @@ pub async fn distros() -> Vec<String> {
     list.args(["--list", "--quiet"]);
     output(list)
         .await
-        .map(|names| {
-            names
-                .lines()
-                .map(|line| line.trim().trim_matches('\0').to_owned())
-                .filter(|line| !line.is_empty())
-                .collect()
-        })
+        .map(|names| listed(&names))
         .unwrap_or_default()
+}
+
+/// The distros in what `wsl.exe --list --quiet` printed, but for Docker Desktop's.
+fn listed(names: &str) -> Vec<String> {
+    names
+        .lines()
+        .map(|line| line.trim().trim_matches('\0').to_owned())
+        .filter(|line| !line.is_empty())
+        .filter(|line| {
+            !DOCKER_DESKTOP
+                .iter()
+                .any(|docker| line.eq_ignore_ascii_case(docker))
+        })
+        .collect()
 }
 
 /// A command that runs `script` with bash as a login shell in a WSL distro, so that it finds what
@@ -75,7 +86,15 @@ pub fn in_wsl(distro: &str, script: &str) -> Command {
 
 #[cfg(test)]
 mod tests {
-    use super::text;
+    use super::{listed, text};
+
+    #[test]
+    fn docker_desktops_distros_are_left_out() {
+        assert_eq!(
+            listed("Ubuntu\r\ndocker-desktop\r\nDocker-Desktop-Data\r\nDebian\r\n\r\n"),
+            ["Ubuntu", "Debian"]
+        );
+    }
 
     #[test]
     fn wsl_output_is_read_whether_wide_or_not() {

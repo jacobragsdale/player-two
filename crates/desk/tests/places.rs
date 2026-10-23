@@ -5,6 +5,8 @@ use std::sync::{Arc, Mutex};
 use common::{Hub, overview, until};
 use player_two_core::event::RunsIn;
 use player_two_desk::Desk;
+use player_two_desk::files::Files;
+use player_two_desk::places::Settings;
 use player_two_desk::ui::{Request, Response};
 
 /// Gives the desk a folder dialog that picks whatever `picked` holds when it opens.
@@ -23,6 +25,7 @@ async fn a_picked_checkout_is_named_by_its_remote_and_advertised() {
     let hub = Hub::start().await;
     let alice = hub.joined("alice").await;
     let bob = hub.joined("bob").await;
+    common::fake_agent(&hub, &alice, "alice").await;
 
     let checkout = tempfile::tempdir().expect("a folder");
     let path = checkout.path().join("whatever-the-folder-is-called");
@@ -122,10 +125,29 @@ async fn a_picked_checkout_is_named_by_its_remote_and_advertised() {
     };
     assert_eq!(choices, [RunsIn::Windows]);
 
+    let kept: Settings = Files::new(hub.folder("alice"))
+        .read("settings.json")
+        .expect("read")
+        .expect("there");
+    assert_eq!(kept.folders[0].former, [uploader]);
+
+    // A folder that has gone is kept, marked, and no longer advertised.
+    std::fs::rename(&path, format!("{path}-moved")).expect("moved");
     let Ok(Response::Places(places)) = alice.handle(Request::Places).await else {
         panic!("the places are listed");
     };
-    assert_eq!(places.folders[0].former, [uploader]);
+    assert_eq!(
+        places.folders[0].unavailable.as_deref(),
+        Some("the folder is not there any more")
+    );
+    until(&bob, "the gone folder to go", |overview| {
+        overview.people.iter().any(|person| {
+            person.name.as_str() == "alice"
+                && person.places.len() == 1
+                && person.places[0].name.is_machine()
+        })
+    })
+    .await;
     let name = places.folders[0].name.clone();
     assert_eq!(
         alice.handle(Request::RemoveFolder { name }).await,

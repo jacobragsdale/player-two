@@ -235,10 +235,10 @@ impl Desk {
 
     /// Finds the folder and the agent for a run, and opens a session with it there.
     async fn open_session(&self, order: &Order) -> anyhow::Result<Parts> {
-        let mut found = self.state().agents.clone();
-        if found.is_empty() {
-            found = self.find_agents().await?;
-        }
+        let found = self
+            .look(crate::looking::Where::At(order.runs_in.clone()))
+            .await?
+            .agents;
         let agent = agents::for_system(&found, &order.runs_in).ok_or_else(|| {
             let system = match &order.runs_in {
                 RunsIn::Windows => "Windows".to_owned(),

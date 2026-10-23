@@ -11,7 +11,6 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 
 use crate::agents::AgentKind;
-use crate::places::Folder;
 
 /// Something the window asks of the desk.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Type)]
@@ -258,11 +257,24 @@ pub struct PlacesView {
     /// Where `@me` runs by default.
     pub machine_runs_in: RunsIn,
     /// The folders shared.
-    pub folders: Vec<Folder>,
+    pub folders: Vec<SharedFolder>,
     /// The WSL distros with an agent in them; none without WSL, or with no agent in it.
     pub distros: Vec<String>,
     /// The agents found, and where.
     pub agents: Vec<AgentInfo>,
+}
+
+/// One shared folder, as the settings page shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Type)]
+pub struct SharedFolder {
+    /// The name it is tagged by.
+    pub name: PlaceName,
+    /// Where it is, as a Windows path, or a Linux one inside its distro.
+    pub path: String,
+    /// Which system it is on.
+    pub runs_in: RunsIn,
+    /// Why it cannot run now, when it cannot. It is not advertised until it can.
+    pub unavailable: Option<String>,
 }
 
 /// One agent found.

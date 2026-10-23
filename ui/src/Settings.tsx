@@ -6,7 +6,7 @@ import type { JSX, SyntheticEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-import type { AgentInfo, AgentKind, Folder, PlacesView, RunsIn } from "./desk.ts";
+import type { AgentInfo, AgentKind, PlacesView, RunsIn, SharedFolder } from "./desk.ts";
 import { ask, problem } from "./deskClient.ts";
 
 const HEADING = "mt-6 mb-2 text-sm font-semibold";
@@ -126,8 +126,8 @@ function NoAgent({ onLook }: { readonly onLook: () => void }): JSX.Element {
   );
 }
 
-/** One shared folder: its name, which can be changed, where it is, and the button that stops sharing it. */
-function FolderRow({ folder, wsl, onRename, onStop }: { readonly folder: Folder; readonly wsl: boolean; readonly onRename: (to: string) => void; readonly onStop: () => void }): JSX.Element {
+/** One shared folder: its name, which can be changed, where it is, why it cannot run when it cannot, and the button that stops sharing it. */
+function FolderRow({ folder, wsl, onRename, onStop }: { readonly folder: SharedFolder; readonly wsl: boolean; readonly onRename: (to: string) => void; readonly onStop: () => void }): JSX.Element {
   const [editing, setEditing] = useState<string | null>(null);
   const save = (event: SyntheticEvent<HTMLFormElement>): void => {
     event.preventDefault();
@@ -179,6 +179,7 @@ function FolderRow({ folder, wsl, onRename, onStop }: { readonly folder: Folder;
         {folder.path}
         {wsl ? ` · ${where(folder.runs_in)}` : ""}
       </span>
+      {folder.unavailable !== null && <span className="text-xs text-warn">not available: {folder.unavailable}</span>}
       <Button type="button" variant="ghost" size="xs" className="ml-auto" aria-label={`Stop sharing ${folder.name}`} onClick={onStop}>
         Stop sharing
       </Button>
