@@ -13,7 +13,7 @@ The hub hands out the app and keeps everyone on its version. This comes before a
   - Its endpoint is set at run time to the hub's `/update`, from `identity.json`, so no address is built in.
   - When the hub's version differs, the window offers the update, installs it and restarts.
   - The webview cannot reach the updater except through the `desk` command.
-- [ ] **P3-3 One version.**
+- [x] **P3-3 One version.**
   - The workspace version in `Cargo.toml` is the only version number. The app, the hub and `ui/package.json` take it from there.
   - A test fails if they disagree.
 - [ ] **P3-4 The image carries the installer.** `deploy/Dockerfile` copies `deploy/release/` (the installer and its `.sig`) to `/app/release`.
