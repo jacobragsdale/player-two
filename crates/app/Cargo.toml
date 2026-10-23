@@ -9,6 +9,11 @@ tauri-build = { version = "2.7", features = [] }
 
 [dependencies]
 anyhow = "1.0"
+player-two-core.workspace = true
 player-two-desk.workspace = true
-tauri = { version = "2.12", features = [] }
+tauri = { version = "2.12", features = ["tray-icon"] }
+tauri-plugin-autostart = "2.7"
 tauri-plugin-single-instance = "2.5"
+
+[target.'cfg(windows)'.dependencies]
+tauri-winrt-notification = "0.8"

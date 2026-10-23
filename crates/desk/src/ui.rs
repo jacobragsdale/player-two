@@ -105,6 +105,21 @@ pub enum Event {
         /// Which.
         chat: ChatId,
     },
+    /// Something worth a notification arrived: a direct message, or a tag of the person or
+    /// their places. The app shows it while the window is not in front.
+    Notify {
+        /// Where.
+        chat: ChatId,
+        /// Who, and where.
+        title: String,
+        /// The start of what they said.
+        body: String,
+    },
+    /// The person clicked a notification: the window opens its chat.
+    Open {
+        /// Which.
+        chat: ChatId,
+    },
 }
 
 /// How the desk stands with the hub.

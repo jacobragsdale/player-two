@@ -71,6 +71,21 @@ export type Event =
 /**  A chat changed. */
 { type: "chat"; 
 /**  Which. */
+chat: ChatId } | 
+/**
+ *  Something worth a notification arrived: a direct message, or a tag of the person or
+ *  their places. The app shows it while the window is not in front.
+ */
+{ type: "notify"; 
+/**  Where. */
+chat: ChatId; 
+/**  Who, and where. */
+title: string; 
+/**  The start of what they said. */
+body: string } | 
+/**  The person clicked a notification: the window opens its chat. */
+{ type: "open"; 
+/**  Which. */
 chat: ChatId };
 
 /**  One message as the window draws it. */

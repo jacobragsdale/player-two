@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { ChannelDialog } from "./Channels.tsx";
 import { Chat } from "./Chat.tsx";
 import type { ChatId } from "./desk.ts";
-import { useOverview } from "./hooks.ts";
+import { useDeskEvents, useOverview } from "./hooks.ts";
 import { Sidebar } from "./Sidebar.tsx";
 
 export function Joined(): JSX.Element {
@@ -16,6 +16,14 @@ export function Joined(): JSX.Element {
   const [open, setOpen] = useState<ChatId | null>(null);
   const [thread, setThread] = useState<number | null>(null);
   const [choosing, setChoosing] = useState(false);
+
+  // A clicked notification opens its chat.
+  useDeskEvents((event) => {
+    if (event.type === "open") {
+      setOpen(event.chat);
+      setThread(null);
+    }
+  });
 
   // Until the person picks one, the first chat is open.
   const first = overview?.chats[0]?.chat ?? null;

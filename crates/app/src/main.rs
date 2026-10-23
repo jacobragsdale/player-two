@@ -1,11 +1,20 @@
-//! The Tauri shell around the window and the desk.
+//! The Tauri shell around the window and the desk: one window, a tray icon that keeps the app
+//! running when the window is closed, start at login, and Windows' notifications.
 
 // A release build is a windowed app with no console of its own.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod notify;
+
 use player_two_desk::Desk;
-use player_two_desk::ui::{Request, Response};
-use tauri::{Emitter, Manager, State};
+use player_two_desk::ui::{Event, Request, Response};
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{App, Emitter, Manager, State, WindowEvent};
+use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
+
+/// The argument start at login passes, so the app starts in the tray rather than in front.
+const MINIMIZED: &str = "--minimized";
 
 /// Passes one request from the window to the desk. This is the only command the webview may call.
 #[tauri::command]
@@ -17,27 +26,83 @@ fn main() -> anyhow::Result<()> {
     tauri::Builder::default()
         // A second start brings the running window forward instead of opening another desk.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(window) = app.get_webview_window("main") {
-                // Bringing it forward is a courtesy; if the system refuses, the window is still there.
-                let _ = window.unminimize();
-                let _ = window.set_focus();
-            }
+            notify::bring_forward(app);
         }))
-        .setup(|app| {
-            let (desk, mut told) = Desk::new(app.path().app_data_dir()?);
-            let running = desk.clone();
-            tauri::async_runtime::spawn(async move { running.run().await });
-            let handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                while let Some(event) = told.recv().await {
-                    // A window still loading misses nothing it needs: it asks for everything first.
-                    let _ = handle.emit("desk", event);
-                }
-            });
-            app.manage(desk);
-            Ok(())
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            Some(vec![MINIMIZED]),
+        ))
+        .setup(setup)
+        // Closing the window keeps the app in the tray, where requests can still reach it.
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                // A window that cannot hide stays open; nothing is lost.
+                let _ = window.hide();
+            }
         })
         .invoke_handler(tauri::generate_handler![desk])
         .run(tauri::generate_context!())?;
+    Ok(())
+}
+
+fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
+    let (desk, mut told) = Desk::new(app.path().app_data_dir()?);
+    let running = desk.clone();
+    tauri::async_runtime::spawn(async move { running.run().await });
+    let handle = app.handle().clone();
+    tauri::async_runtime::spawn(async move {
+        while let Some(event) = told.recv().await {
+            if let Event::Notify { chat, title, body } = &event
+                && !notify::looking(&handle)
+            {
+                notify::show(&handle, chat.clone(), title, body);
+            }
+            // A window still loading misses nothing it needs: it asks for everything first.
+            let _ = handle.emit("desk", event);
+        }
+    });
+    app.manage(desk);
+    tray(app)?;
+    // Starting at login is how requests reach a machine whose owner has not opened the app.
+    if let Err(error) = app.autolaunch().enable() {
+        eprintln!("error: cannot start at login: {error}");
+    }
+    if std::env::args().any(|arg| arg == MINIMIZED)
+        && let Some(window) = app.get_webview_window("main")
+    {
+        window.hide()?;
+    }
+    Ok(())
+}
+
+/// The tray icon: a click opens the window, and its menu opens the window or quits the app.
+fn tray(app: &App) -> tauri::Result<()> {
+    let open = MenuItem::with_id(app, "open", "Open Player Two", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&open, &quit])?;
+    let mut tray = TrayIconBuilder::new()
+        .tooltip("Player Two")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "open" => notify::bring_forward(app),
+            "quit" => app.exit(0),
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                notify::bring_forward(tray.app_handle());
+            }
+        });
+    if let Some(icon) = app.default_window_icon() {
+        tray = tray.icon(icon.clone());
+    }
+    tray.build(app)?;
     Ok(())
 }

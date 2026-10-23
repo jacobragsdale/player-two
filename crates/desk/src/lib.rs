@@ -388,11 +388,16 @@ impl Desk {
                 incoming = stream.next() => match incoming? {
                     Some(Incoming::Event(event)) => {
                         let chat = event.chat.clone();
-                        if let Some(chats) = self.state().chats.as_mut() {
+                        let notice = self.state().chats.as_mut().and_then(|chats| {
+                            let notice = chats.notice(&event);
                             chats.apply(event);
-                        }
-                        self.tell(ui::Event::Chat { chat });
+                            notice
+                        });
+                        self.tell(ui::Event::Chat { chat: chat.clone() });
                         self.tell(ui::Event::Overview);
+                        if let Some((title, body)) = notice {
+                            self.tell(ui::Event::Notify { chat, title, body });
+                        }
                     }
                     Some(Incoming::Presence(presence)) => {
                         if let Some(chats) = self.state().chats.as_mut() {

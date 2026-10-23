@@ -9,6 +9,9 @@ use player_two_core::names::{ChatId, PersonName};
 
 use crate::ui::{ChatSummary, ChatView, Item};
 
+/// How many characters of a message a notification shows.
+const NOTICE_LENGTH: usize = 200;
+
 /// Everything the desk has seen of the person's chats.
 #[derive(Debug, Clone)]
 pub struct Chats {
@@ -123,6 +126,33 @@ impl Chats {
             .entry(event.chat.clone())
             .or_default()
             .insert(event.id, event);
+    }
+
+    /// What to notify the person of, if `event` is a direct message to them or tags them or one
+    /// of their places: a title and the start of the text.
+    #[must_use]
+    pub fn notice(&self, event: &Event) -> Option<(String, String)> {
+        let Body::Message(message) = &event.body else {
+            return None;
+        };
+        if event.author == self.me {
+            return None;
+        }
+        let direct = event.chat.is_between(&self.me);
+        let tagged = message.tags.iter().any(|tag| tag.person == self.me);
+        if !direct && !tagged {
+            return None;
+        }
+        let title = if direct {
+            event.author.to_string()
+        } else {
+            format!("{} in {}", event.author, self.title(&event.chat))
+        };
+        let mut body: String = message.text.chars().take(NOTICE_LENGTH).collect();
+        if message.text.chars().count() > NOTICE_LENGTH {
+            body.push('…');
+        }
+        Some((title, body))
     }
 
     /// The newest event the desk has seen, in any chat.
@@ -353,6 +383,35 @@ mod tests {
         chats.mark_read(&ops);
         assert_eq!(chats.summaries()[0].unread, 0);
         assert_eq!(chats.read_marks().get(&ops), Some(&EventId(5)));
+    }
+
+    #[test]
+    fn direct_messages_and_tags_of_me_are_worth_a_notice() {
+        let (chats, ops, direct) = chats();
+        assert_eq!(
+            chats.notice(&message(1, &direct, "bob", None, "hi")),
+            Some(("bob".to_owned(), "hi".to_owned()))
+        );
+        assert_eq!(
+            chats.notice(&message(2, &direct, "alice", None, "mine")),
+            None
+        );
+        assert_eq!(
+            chats.notice(&message(3, &ops, "bob", None, "chatter")),
+            None
+        );
+        let mut tagged = message(4, &ops, "bob", None, &"x".repeat(250));
+        if let Body::Message(text) = &mut tagged.body {
+            text.tags.push(player_two_core::event::Tag {
+                person: name("alice"),
+                place: player_two_core::names::PlaceName::machine(),
+            });
+        }
+        let (title, body) = chats
+            .notice(&tagged)
+            .expect("a tag of alice is worth a notice");
+        assert_eq!(title, "bob in #ops");
+        assert_eq!(body.chars().count(), 201);
     }
 
     #[test]
