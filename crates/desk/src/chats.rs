@@ -68,18 +68,28 @@ impl Chats {
         self.people = people;
     }
 
-    /// Records someone arriving or leaving.
+    /// Records someone arriving or leaving. Someone leaving was last seen now, until the next
+    /// fetch of the people says when by the hub's clock.
     pub fn presence(&mut self, presence: &Presence) {
         if let Some(person) = self
             .people
             .iter_mut()
             .find(|person| person.name == presence.name)
         {
+            if person.here && !presence.here {
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |since| {
+                        i64::try_from(since.as_millis()).unwrap_or(i64::MAX)
+                    });
+                person.last_seen = Some(now);
+            }
             person.here = presence.here;
         }
     }
 
-    /// The chats to show: the person's channels, then a direct chat with everyone else.
+    /// The chats to show: the person's channels, then a direct chat with everyone else. The
+    /// people talked with come first, the latest first, then everyone else by name.
     #[must_use]
     pub fn mine(&self) -> Vec<ChatId> {
         let channels = self
@@ -87,11 +97,24 @@ impl Chats {
             .iter()
             .filter(|channel| channel.members.contains(&self.me))
             .map(|channel| ChatId::Channel(channel.name.clone()));
-        let directs = self
+        let mut directs: Vec<(Option<EventId>, ChatId)> = self
             .people
             .iter()
-            .filter_map(|person| ChatId::direct(self.me.clone(), person.name.clone()).ok());
-        channels.chain(directs).collect()
+            .filter_map(|person| ChatId::direct(self.me.clone(), person.name.clone()).ok())
+            .map(|chat| {
+                let latest = self.messages(&chat).map(|(event, _)| event.id).max();
+                (latest, chat)
+            })
+            .collect();
+        // Newest first; a chat with no messages sorts after every one with some.
+        directs.sort_by(|(one, one_chat), (other, other_chat)| {
+            other
+                .cmp(one)
+                .then_with(|| self.title(one_chat).cmp(&self.title(other_chat)))
+        });
+        channels
+            .chain(directs.into_iter().map(|(_, chat)| chat))
+            .collect()
     }
 
     /// Whether the desk has loaded anything of a chat yet.
@@ -553,10 +576,21 @@ impl Chats {
                 .unwrap_or_default(),
             ChatId::Direct(one, other) => vec![one.clone(), other.clone()],
         };
+        let person = match chat {
+            ChatId::Channel(_) => None,
+            ChatId::Direct(..) => {
+                let title = self.title(chat);
+                self.people
+                    .iter()
+                    .find(|person| person.name.as_str() == title)
+                    .cloned()
+            }
+        };
         ChatView {
             chat: chat.clone(),
             title: self.title(chat),
             members,
+            person,
             thread,
             items,
             has_older: !self.complete.contains(chat),
@@ -634,6 +668,43 @@ mod tests {
             (summaries[1].title.as_str(), summaries[1].here),
             ("bob", Some(true))
         );
+    }
+
+    #[test]
+    fn people_talked_with_come_first_the_latest_first() {
+        let (mut chats, ops, bob) = chats();
+        chats.set_people(vec![
+            person("alice"),
+            person("bob"),
+            person("carol"),
+            person("dave"),
+        ]);
+        let with = |who: &str| ChatId::direct(name("alice"), name(who)).expect("a chat");
+        chats.apply(message(1, &with("dave"), "dave", None, "hi"));
+        chats.apply(message(2, &bob, "alice", None, "hello"));
+        assert_eq!(
+            chats.mine(),
+            [ops, bob.clone(), with("dave"), with("carol")]
+        );
+        let view = chats.view(&bob, None);
+        assert_eq!(
+            view.person.map(|person| person.name),
+            Some(name("bob")),
+            "a direct chat says who it is with"
+        );
+    }
+
+    #[test]
+    fn someone_leaving_was_last_seen_then() {
+        let (mut chats, _, _) = chats();
+        let arrive = |here| Presence {
+            name: name("bob"),
+            here,
+        };
+        chats.presence(&arrive(true));
+        assert_eq!(chats.people()[1].last_seen, None);
+        chats.presence(&arrive(false));
+        assert!(chats.people()[1].last_seen.is_some());
     }
 
     #[test]

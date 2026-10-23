@@ -356,6 +356,9 @@ pub struct ChatView {
     pub title: String,
     /// Who is in it.
     pub members: Vec<PersonName>,
+    /// For a direct chat, the other person: whether they are here, when they were last, and
+    /// what they share.
+    pub person: Option<Person>,
     /// The thread shown, by its first message, or none for the top level.
     pub thread: Option<EventId>,
     /// Its messages, oldest first.

@@ -70,6 +70,11 @@ export type ChatView = {
 	title: string,
 	/**  Who is in it. */
 	members: PersonName[],
+	/**
+	 *  For a direct chat, the other person: whether they are here, when they were last, and
+	 *  what they share.
+	 */
+	person: Person | null,
 	/**  The thread shown, by its first message, or none for the top level. */
 	thread: number | null,
 	/**  Its messages, oldest first. */

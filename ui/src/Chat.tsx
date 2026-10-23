@@ -29,7 +29,36 @@ interface Props {
   readonly people: readonly Person[];
 }
 
-/** The chat's name, or "Thread"; in a channel's top level, who else is in it and the button that leaves it; in a thread, the button that closes it. */
+/** How long ago a time was, in round words: "just now", "5 min ago", "2 h ago", "3 days ago". */
+export function ago(ts: number, now: number): string {
+  const minutes = Math.floor((now - ts) / 60_000);
+  if (minutes < 1) {
+    return "just now";
+  }
+  if (minutes < 60) {
+    return `${String(minutes)} min ago`;
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `${String(hours)} h ago`;
+  }
+  const days = Math.floor(hours / 24);
+  return days === 1 ? "a day ago" : `${String(days)} days ago`;
+}
+
+/** For a direct chat: whether the person is here or when they were last, and what can be tagged of theirs. */
+export function PersonLine({ person }: { readonly person: Person }): JSX.Element {
+  const seen = person.last_seen ?? null;
+  const presence = person.here ? "here now" : seen === null ? "away" : `last seen ${ago(seen, Date.now())}`;
+  const tags = person.places.map((place) => (place.kind === "machine" ? `@${person.name}` : `@${person.name}/${place.name}`));
+  return (
+    <span className="truncate text-xs text-muted-foreground">
+      {presence} · {tags.length === 0 ? "no agent set up yet" : `shares ${tags.join(", ")}`}
+    </span>
+  );
+}
+
+/** The chat's name, or "Thread"; in a channel's top level, who else is in it and the button that leaves it; in a direct chat, the other person's presence and places; in a thread, the button that closes it. */
 function Header({ view, me, onClose, onLeft }: { readonly view: ChatView; readonly me: string; readonly onClose: (() => void) | null; readonly onLeft: (() => void) | null }): JSX.Element {
   const channel = view.thread === null && view.chat.startsWith("#");
   const others = view.members.filter((member) => member !== me);
@@ -37,6 +66,7 @@ function Header({ view, me, onClose, onLeft }: { readonly view: ChatView; readon
     <header className="flex items-center gap-2 border-b px-4 py-2">
       <h2 className="font-semibold">{view.thread === null ? view.title : "Thread"}</h2>
       {channel && <span className="truncate text-xs text-muted-foreground">{others.length === 0 ? "just you" : `you, ${others.join(", ")}`}</span>}
+      {view.thread === null && view.person !== null && <PersonLine person={view.person} />}
       {channel && onLeft !== null && <LeaveChannel chat={view.chat} onLeft={onLeft} />}
       {onClose !== null && (
         <Button type="button" variant="ghost" size="xs" className="ml-auto" onClick={onClose} aria-label="Close the thread">
