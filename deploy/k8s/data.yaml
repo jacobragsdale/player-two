@@ -1,0 +1,56 @@
+# The hub's two NFS folders, as volumes that outlive everything else. Apply this once, and never
+# delete it: with Retain, deleting a claim keeps the files, but it takes a person to bind them
+# again. Fill in every TODO. The NFS export must let user 10001 write.
+apiVersion: v1
+kind: List
+items:
+  - apiVersion: v1
+    kind: PersistentVolume
+    metadata:
+      name: player-two-data
+    spec:
+      capacity:
+        storage: 1Gi
+      accessModes: [ReadWriteOnce]
+      persistentVolumeReclaimPolicy: Retain
+      storageClassName: ""
+      mountOptions: [hard, nfsvers=4.1]
+      nfs:
+        server: TODO-nfs-server
+        path: /TODO/player-two/data
+  - apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name: player-two-data
+    spec:
+      accessModes: [ReadWriteOnce]
+      storageClassName: ""
+      volumeName: player-two-data
+      resources:
+        requests:
+          storage: 1Gi
+  - apiVersion: v1
+    kind: PersistentVolume
+    metadata:
+      name: player-two-backups
+    spec:
+      capacity:
+        storage: 5Gi
+      accessModes: [ReadWriteOnce]
+      persistentVolumeReclaimPolicy: Retain
+      storageClassName: ""
+      mountOptions: [hard, nfsvers=4.1]
+      nfs:
+        server: TODO-nfs-server
+        path: /TODO/player-two/backups
+  - apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name: player-two-backups
+    spec:
+      accessModes: [ReadWriteOnce]
+      storageClassName: ""
+      volumeName: player-two-backups
+      resources:
+        requests:
+          storage: 5Gi

@@ -33,7 +33,7 @@ The whole hub, tested end to end and ready to deploy. [`protocol.md`](protocol.m
   - `/healthz` and `/version`.
   - `/download` serves the installer in `PLAYER_TWO_RELEASE`, and `/update` builds the manifest from it and its `.sig`.
   - Without those files, both return `404`.
-- [ ] **P1-11 The image and manifests.** Use `TODO` placeholders for every internal name.
+- [x] **P1-11 The image and manifests.** Use `TODO` placeholders for every internal name.
   - `deploy/Dockerfile`: a static musl build of `player-two-hub`, run as a non-root user, with `/data`, `/backups` and `/app/release`.
   - `.dockerignore`.
   - `deploy/k8s/data.yaml`: static NFS PersistentVolumes with `persistentVolumeReclaimPolicy: Retain` and their claims, one for data and one for backups. It is applied once and never deleted.
@@ -52,3 +52,6 @@ The whole hub, tested end to end and ready to deploy. [`protocol.md`](protocol.m
 The scenario test passes, the image builds, and the manifests apply cleanly to a scratch cluster or pass `kubectl apply --dry-run=client`.
 
 ## Notes
+
+- **P1-8: the port is a setting.** Another program on the development machine holds 8787, so `PLAYER_TWO_PORT` (default 8787) sets where the hub listens and where the admin commands look. It is in `protocol.md`'s table.
+- **P1-11: how the manifests were checked.** There is no cluster or kubectl here, so they were validated with kubeconform (`-strict`, 7 resources valid). The image was built and run: 7.6 MB, from `scratch`. Building it with only the hub selected showed that the hub needed tokio's `fs` feature, which the rest of the workspace had been switching on for it.
