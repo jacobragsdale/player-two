@@ -34,7 +34,7 @@ use player_two_core::api::{NewEvent, PlaceInfo};
 use player_two_core::event::RunsIn;
 use player_two_core::event::{Body, Event, EventId, Message, Mode, RunAnswer, StepsBy};
 use player_two_core::join_code::JoinCode;
-use player_two_core::names::{ChannelName, ChatId, PersonName};
+use player_two_core::names::{ChannelName, ChatId, PersonName, PlaceName};
 use tokio::sync::{Notify, mpsc};
 use ui::{AgentInfo, Connection, Overview, PlacesView, Request, Response, SharedFolder};
 
@@ -208,6 +208,14 @@ impl Desk {
                 mode,
             } => {
                 self.send(chat, thread, text, mode).await?;
+                Ok(Response::Done)
+            }
+            Request::RunNow {
+                chat,
+                request,
+                place,
+            } => {
+                self.run_now(&chat, request, place).await?;
                 Ok(Response::Done)
             }
             Request::Stop { run } => {
@@ -578,6 +586,7 @@ impl Desk {
             default_mode: self
                 .settings()
                 .map_or(Mode::Ask, |settings| settings.default_mode),
+            busy: self.runs_going_at(),
         }
     }
 
@@ -698,26 +707,67 @@ impl Desk {
                 // It waits, as a teammate's request would, until the place is free.
                 continue;
             }
-            let runs_in = if tag.place.is_machine() {
-                settings.machine_runs_in.clone()
-            } else {
-                settings
-                    .folder(&tag.place)
-                    .map_or(RunsIn::Windows, |folder| folder.runs_in.clone())
-            };
-            self.start_run(runs::Order {
-                request: request.clone(),
-                asker: me.clone(),
-                text: text.clone(),
-                place: tag.place,
-                runs_in,
-                mode: settings.default_mode,
-                steps_by: StepsBy::Owner,
-                keep_going: false,
-            })
-            .await?;
+            self.run_own(&request, &text, tag.place, &settings).await?;
         }
         Ok(())
+    }
+
+    /// Runs the person's own request at one of their places, at their default mode.
+    async fn run_own(
+        &self,
+        request: &Event,
+        text: &str,
+        place: PlaceName,
+        settings: &Settings,
+    ) -> anyhow::Result<()> {
+        let runs_in = if place.is_machine() {
+            settings.machine_runs_in.clone()
+        } else {
+            settings
+                .folder(&place)
+                .map_or(RunsIn::Windows, |folder| folder.runs_in.clone())
+        };
+        self.start_run(runs::Order {
+            request: request.clone(),
+            asker: request.author.clone(),
+            text: text.to_owned(),
+            place,
+            runs_in,
+            mode: settings.default_mode,
+            steps_by: StepsBy::Owner,
+            keep_going: false,
+        })
+        .await
+    }
+
+    /// Runs a request of the person's own that waited while its place was busy.
+    async fn run_now(
+        &self,
+        chat: &ChatId,
+        request: EventId,
+        place: PlaceName,
+    ) -> anyhow::Result<()> {
+        let asked = self.event(chat, request)?;
+        let me = self.me().context("the chats have not loaded yet")?;
+        let Body::Message(message) = &asked.body else {
+            anyhow::bail!("that is not a request");
+        };
+        let waiting = self
+            .state()
+            .chats
+            .as_ref()
+            .map(|chats| chats.unanswered(chat, request))
+            .unwrap_or_default();
+        anyhow::ensure!(
+            asked.author == me
+                && waiting
+                    .iter()
+                    .any(|tag| tag.person == me && tag.place == place),
+            "that is not a request of yours still waiting"
+        );
+        anyhow::ensure!(self.busy(&place).is_none(), "{place} is still busy");
+        let text = message.text.clone();
+        self.run_own(&asked, &text, place, &self.settings()?).await
     }
 
     fn read(&self, chat: &ChatId) -> anyhow::Result<()> {

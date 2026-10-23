@@ -4,7 +4,7 @@ import type { JSX } from "react";
 
 import { Button } from "@/components/ui/button";
 
-import type { ChatId, Item } from "./desk.ts";
+import type { ChatId, Item, Mode } from "./desk.ts";
 import { Approval } from "./Approval.tsx";
 import { Run, Waiting } from "./Run.tsx";
 import { Text } from "./Text.tsx";
@@ -16,7 +16,18 @@ export function when(ts: number): string {
   return today ? at.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : at.toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
-export function Message({ item, me, chat, onThread }: { readonly item: Item; readonly me: string; readonly chat: ChatId; readonly onThread: ((root: number) => void) | null }): JSX.Element {
+interface Props {
+  readonly item: Item;
+  readonly me: string;
+  readonly chat: ChatId;
+  readonly onThread: ((root: number) => void) | null;
+  /** The person's places with a run going now. */
+  readonly busy: readonly string[];
+  /** The mode the person's own agent runs at now. */
+  readonly mode: Mode;
+}
+
+export function Message({ item, me, chat, onThread, busy, mode }: Props): JSX.Element {
   const open = (): void => {
     onThread?.(item.id);
   };
@@ -37,7 +48,7 @@ export function Message({ item, me, chat, onThread }: { readonly item: Item; rea
       {item.runs.map((run) => (
         <Run key={run.id} run={run} chat={chat} me={me} />
       ))}
-      <Waiting tags={item.waiting} me={me} author={item.author} chat={chat} request={item.id} />
+      <Waiting tags={item.waiting} me={me} author={item.author} chat={chat} request={item.id} busy={busy} mode={mode} />
       {item.author !== me &&
         item.waiting.filter((tag) => tag.person === me).map((tag) => <Approval key={tag.place} chat={chat} request={item.id} place={tag.place} asker={item.author} follows={null} />)}
       {item.follows !== null && item.follows.owner === me && item.follows.state !== "working" && (

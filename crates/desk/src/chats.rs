@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, HashSet};
 
 use player_two_core::api::{ChannelInfo, Person, Presence};
 use player_two_core::event::{
-    Body, Ending, Event, EventId, Message, RunAccepted, RunDeclined, RunWithdrawn, StepsBy,
+    Body, Ending, Event, EventId, Message, RunAccepted, RunDeclined, RunWithdrawn, StepsBy, Tag,
 };
 use player_two_core::names::{ChatId, PersonName, PlaceName};
 
@@ -500,6 +500,23 @@ impl Chats {
             }
         }
         (by_request, answered)
+    }
+
+    /// The tags of a request that nobody has answered yet: not run, declined or taken back.
+    #[must_use]
+    pub fn unanswered(&self, chat: &ChatId, request: EventId) -> Vec<Tag> {
+        let Some(Body::Message(message)) = self.event(chat, request).map(|event| &event.body)
+        else {
+            return Vec::new();
+        };
+        let (_, answered) = self.runs(chat);
+        let answered_by = answered.get(&request).cloned().unwrap_or_default();
+        message
+            .tags
+            .iter()
+            .filter(|tag| !answered_by.contains(&tag.person))
+            .cloned()
+            .collect()
     }
 
     /// The runs this person's desk started that never said how they ended: a restart cut them

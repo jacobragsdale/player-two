@@ -52,6 +52,16 @@ pub enum Request {
         /// The mode for the person's own agent, which becomes their default; none keeps it.
         mode: Option<Mode>,
     },
+    /// Runs a request of the person's own that waited while its place was busy, at their
+    /// default mode.
+    RunNow {
+        /// The chat it is in.
+        chat: ChatId,
+        /// The message asking.
+        request: EventId,
+        /// The place it waited for.
+        place: PlaceName,
+    },
     /// Stops a run going on at one of this machine's places.
     Stop {
         /// The run, by its `run.accepted`.
@@ -337,6 +347,8 @@ pub struct Overview {
     pub channels: Vec<ChannelInfo>,
     /// The mode the person's own tags run at.
     pub default_mode: Mode,
+    /// The person's places with a run going now.
+    pub busy: Vec<PlaceName>,
 }
 
 /// One line of the chat list.

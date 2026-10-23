@@ -35,7 +35,7 @@ Shared folders are picked with the folder dialog, setting up an agent is part of
 - [ ] **P6-9 Notifications for what waits on you.**
   - These notify too: a follow-up waiting for your click, a step waiting for your Allow (whether you own the run or were handed its steps), and the end of a run you asked for.
   - `Event::Open` carries the thread, and the window opens it.
-- [ ] **P6-10 Run now.** When your own tag found its place busy, the waiting line gets a Run now button once the place is free. The button names the mode it will run at, which is your default when you click. There is still no queue.
+- [x] **P6-10 Run now.** When your own tag found its place busy, the waiting line gets a Run now button once the place is free. The button names the mode it will run at, which is your default when you click. There is still no queue.
 - [ ] **P6-11 The mode switch where it matters.** It shows under the message box only while the text tags one of your places, or in the thread of a run of yours.
 - [ ] **P6-12 The asker can stop.** Whoever asked gets a Stop button that posts `run.stop`. The owner's desk stops the run as if the owner had pressed Stop, and the `run.ended` says who stopped it. The hub checks who may post it.
 - [ ] **P6-13 Masking credentials.** Before posting `run.activity`, `run.prompt` or `run.result`, the owner's desk replaces with `****` the password in a URL's `user:password@`, and the value after `password=`, `token=` or `Authorization:`, in any case. Tests cover each, and show that ordinary text is left alone.

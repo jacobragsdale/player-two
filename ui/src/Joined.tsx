@@ -112,6 +112,7 @@ export function Joined(): JSX.Element {
             }}
             mode={overview.default_mode}
             people={overview.people}
+            busy={overview.busy}
           />
         )}
         {open !== null && thread !== null && (
@@ -128,6 +129,7 @@ export function Joined(): JSX.Element {
               onLeft={null}
               mode={overview.default_mode}
               people={overview.people}
+              busy={overview.busy}
             />
           </div>
         )}

@@ -6,7 +6,7 @@ import type { JSX } from "react";
 
 import { Button } from "@/components/ui/button";
 
-import type { Activity, ChatId, PromptView, RunView, Tag } from "./desk.ts";
+import type { Activity, ChatId, Mode, PromptView, RunView, Tag } from "./desk.ts";
 import { ask, problem } from "./deskClient.ts";
 import { Markdown } from "./Markdown.tsx";
 
@@ -154,20 +154,47 @@ export function Run({ run, chat, me }: { readonly run: RunView; readonly chat: C
   );
 }
 
-/** A line for each tag nobody has answered yet, with Withdraw for whoever asked. */
-export function Waiting({
-  tags,
-  me,
-  author,
-  chat,
-  request
-}: {
+const MODE_NAMES = { "read-only": "Read-only", ask: "Ask", full: "Full" } as const;
+
+/** The line under a tag of the person's own that found its place busy: Run now, once the place is free, at their mode then. */
+function Busy({ tag, chat, request, busy, mode }: { readonly tag: Tag; readonly chat: ChatId; readonly request: number; readonly busy: boolean; readonly mode: Mode }): JSX.Element {
+  const [error, setError] = useState("");
+  const place = tag.place === "machine" ? "computer" : tag.place;
+  const runNow = (): void => {
+    setError("");
+    ask({ type: "run_now", chat, request, place: tag.place }).catch((failure: unknown) => {
+      setError(problem(failure));
+    });
+  };
+  return (
+    <>
+      <p className="flex items-center gap-2 text-xs text-muted-foreground">
+        <span>◌ {busy ? `your ${place} is busy, so this is waiting until the run before it ends` : `your ${place} was busy, so this waited`}</span>
+        {!busy && (
+          <Button type="button" variant="ghost" size="xs" onClick={runNow}>
+            Run now · {MODE_NAMES[mode]}
+          </Button>
+        )}
+      </p>
+      {error !== "" && <p className="text-xs text-destructive">{error}</p>}
+    </>
+  );
+}
+
+interface WaitingProps {
   readonly tags: readonly Tag[];
   readonly me: string;
   readonly author: string;
   readonly chat: ChatId;
   readonly request: number;
-}): JSX.Element | null {
+  /** The person's places with a run going now. */
+  readonly busy: readonly string[];
+  /** The mode the person's own agent runs at now. */
+  readonly mode: Mode;
+}
+
+/** A line for each tag nobody has answered yet, with Withdraw for whoever asked, and Run now for a tag of the person's own that found its place busy. */
+export function Waiting({ tags, me, author, chat, request, busy, mode }: WaitingProps): JSX.Element | null {
   const [error, setError] = useState("");
   if (tags.length === 0) {
     return null;
@@ -179,21 +206,20 @@ export function Waiting({
   };
   return (
     <>
-      {tags.map((tag) => (
-        <p key={`${tag.person}/${tag.place}`} className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span>
-            ◌{" "}
-            {tag.person === me && author === me
-              ? `your ${tag.place === "machine" ? "computer" : tag.place} was busy, so this is waiting; send it again when the run before it ends`
-              : `waiting for ${tag.person === me ? "you" : tag.person} to approve`}
-          </span>
-          {author === me && tag.person !== me && (
-            <Button type="button" variant="ghost" size="xs" onClick={withdraw}>
-              Withdraw
-            </Button>
-          )}
-        </p>
-      ))}
+      {tags.map((tag) =>
+        tag.person === me && author === me ? (
+          <Busy key={`${tag.person}/${tag.place}`} tag={tag} chat={chat} request={request} busy={busy.includes(tag.place)} mode={mode} />
+        ) : (
+          <p key={`${tag.person}/${tag.place}`} className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span>◌ waiting for {tag.person === me ? "you" : tag.person} to approve</span>
+            {author === me && (
+              <Button type="button" variant="ghost" size="xs" onClick={withdraw}>
+                Withdraw
+              </Button>
+            )}
+          </p>
+        )
+      )}
       {error !== "" && <p className="text-xs text-destructive">{error}</p>}
     </>
   );

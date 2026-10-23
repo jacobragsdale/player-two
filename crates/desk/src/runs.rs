@@ -159,6 +159,11 @@ impl Desk {
         self.runs().active.values().any(|active| active.run == run)
     }
 
+    /// The places with a run going, by the names they go by now.
+    pub(crate) fn runs_going_at(&self) -> Vec<PlaceName> {
+        self.runs().active.keys().cloned().collect()
+    }
+
     /// Whether a place has a run going.
     pub(crate) fn busy(&self, place: &PlaceName) -> Option<EventId> {
         let place = self.current(place);

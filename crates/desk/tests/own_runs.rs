@@ -5,7 +5,7 @@ mod common;
 
 use common::{Hub, chat, overview};
 use player_two_core::event::Mode;
-use player_two_core::names::ChatId;
+use player_two_core::names::{ChatId, PlaceName};
 use player_two_desk::Desk;
 use player_two_desk::ui::{ChatView, Item, Request, Response, RunState};
 
@@ -167,6 +167,14 @@ async fn a_busy_place_leaves_the_next_tag_waiting_and_stop_stops_it() {
     let waiting = until_item(&desk, "@alice read it", "the second tag", |_| true).await;
     assert!(waiting.runs.is_empty());
     assert_eq!(waiting.waiting.len(), 1, "it waits while the place is busy");
+    let run_now = Request::RunNow {
+        chat: id(CHAT),
+        request: waiting.id,
+        place: PlaceName::machine(),
+    };
+    assert_eq!(overview(&desk).await.busy, [PlaceName::machine()]);
+    let refused = desk.handle(run_now.clone()).await;
+    assert!(refused.is_err_and(|error| error.contains("still busy")));
 
     assert_eq!(
         desk.handle(Request::Stop {
@@ -180,4 +188,15 @@ async fn a_busy_place_leaves_the_next_tag_waiting_and_stop_stops_it() {
     })
     .await;
     assert!(stopped.runs[0].result.is_none());
+
+    // Once the place is free, the waiting tag runs with one click.
+    assert_eq!(desk.handle(run_now).await, Ok(Response::Done));
+    let ran = until_item(&desk, "@alice read it", "the waiting tag to run", |item| {
+        item.runs
+            .first()
+            .is_some_and(|run| run.state == RunState::Done)
+    })
+    .await;
+    assert_eq!(ran.runs[0].result.as_deref(), Some("Did: read pip.conf."));
+    assert!(ran.waiting.is_empty());
 }

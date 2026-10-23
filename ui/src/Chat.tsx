@@ -27,6 +27,8 @@ interface Props {
   readonly mode: Mode;
   /** Everyone who can be tagged. */
   readonly people: readonly Person[];
+  /** The person's places with a run going now. */
+  readonly busy: readonly string[];
 }
 
 /** How long ago a time was, in round words: "just now", "5 min ago", "2 h ago", "3 days ago". */
@@ -103,7 +105,7 @@ function Older({ chat }: { readonly chat: ChatId }): JSX.Element {
   );
 }
 
-export function Chat({ chat, me, thread, onThread, onClose, onLeft, mode, people }: Props): JSX.Element {
+export function Chat({ chat, me, thread, onThread, onClose, onLeft, mode, people, busy }: Props): JSX.Element {
   const view = useChat(chat, thread);
   const list = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
@@ -155,7 +157,7 @@ export function Chat({ chat, me, thread, onThread, onClose, onLeft, mode, people
             {item.id === view.first_unread && (
               <p className="mx-4 my-1 flex items-center gap-2 text-xs text-warn before:flex-1 before:border-t before:border-warn after:flex-1 after:border-t after:border-warn">new</p>
             )}
-            <Message item={item} me={me} chat={chat} onThread={thread === null ? onThread : null} />
+            <Message item={item} me={me} chat={chat} onThread={thread === null ? onThread : null} busy={busy} mode={mode} />
           </div>
         ))}
       </div>

@@ -181,6 +181,8 @@ export type Overview = {
 	channels: ChannelInfo[],
 	/**  The mode the person's own tags run at. */
 	default_mode: Mode,
+	/**  The person's places with a run going now. */
+	busy: PlaceName[],
 };
 
 /**  One person, as `GET /people` lists them. */
@@ -287,6 +289,17 @@ thread: number | null;
 text: string; 
 /**  The mode for the person's own agent, which becomes their default; none keeps it. */
 mode: Mode | null } | 
+/**
+ *  Runs a request of the person's own that waited while its place was busy, at their
+ *  default mode.
+ */
+{ type: "run_now"; 
+/**  The chat it is in. */
+chat: ChatId; 
+/**  The message asking. */
+request: number; 
+/**  The place it waited for. */
+place: PlaceName } | 
 /**  Stops a run going on at one of this machine's places. */
 { type: "stop"; 
 /**  The run, by its `run.accepted`. */
