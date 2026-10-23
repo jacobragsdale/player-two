@@ -36,3 +36,5 @@ The hub hands out the app and keeps everyone on its version. This comes before a
 A person given only the download link and a join code can install, join, and later update, without help and without admin rights.
 
 ## Notes
+
+- **P3-1: the installer's name.** Tauri names the installer after the product and version, `Player Two_<version>_x64-setup.exe`, with no setting to change it. The release pipeline copies it into `deploy/release/` as `player-two-setup.exe`, the name the hub serves it under.
