@@ -11,7 +11,8 @@ ui/dist/
 *.db-wal
 
 # The installer, copied in before the hub's image is built
-deploy/release/
+deploy/release/*
+!deploy/release/README.md
 
 # Written by the Tauri build
 crates/app/gen/

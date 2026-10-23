@@ -1,4 +1,5 @@
-# The hub's image: one static binary and three folders. Build it from the repository's root:
+# The hub's image: one static binary, three folders, and the installer the release pipeline put in
+# deploy/release. Build it from the repository's root:
 #   docker build -f deploy/Dockerfile .
 
 FROM rust:1-alpine AS build
@@ -7,7 +8,8 @@ WORKDIR /src
 COPY . .
 RUN cargo build --release --locked -p player-two-hub \
  && mkdir -p /out/data /out/backups /out/app/release \
- && cp target/release/player-two-hub /out/app/
+ && cp target/release/player-two-hub /out/app/ \
+ && cp deploy/release/* /out/app/release/
 
 # Nothing but the binary: no shell, no package manager, nothing to patch.
 FROM scratch

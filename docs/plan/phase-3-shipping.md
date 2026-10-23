@@ -16,7 +16,7 @@ The hub hands out the app and keeps everyone on its version. This comes before a
 - [x] **P3-3 One version.**
   - The workspace version in `Cargo.toml` is the only version number. The app, the hub and `ui/package.json` take it from there.
   - A test fails if they disagree.
-- [ ] **P3-4 The image carries the installer.** `deploy/Dockerfile` copies `deploy/release/` (the installer and its `.sig`) to `/app/release`.
+- [x] **P3-4 The image carries the installer.** `deploy/Dockerfile` copies `deploy/release/` (the installer and its `.sig`) to `/app/release`.
 - [ ] **P3-5 The release pipeline.**
   - Fill in `build.yaml`'s placeholder steps with the real commands: build the UI, run `cargo tauri build` with the updater's signing key from the variable group, build the hub, copy the installer into `deploy/release/`, then build and push the image.
   - Leave `TODO` only for the owner's internal names.
