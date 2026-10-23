@@ -200,12 +200,18 @@ mod tests {
         let agent = parent();
         let (mut running, _stdin, stdout) = start(&agent, &agent.home).expect("it starts");
         let mut lines = tokio::io::BufReader::new(stdout).lines();
-        let child = tokio::time::timeout(std::time::Duration::from_secs(30), lines.next_line())
-            .await
-            .expect("the child's id arrives")
-            .expect("it reads")
-            .expect("a line");
-        let child = child.trim().to_owned();
+        // The grandchild may print first, as ping does on Windows: its id is the first number.
+        let child = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+            loop {
+                let line = lines.next_line().await.expect("it reads").expect("a line");
+                let line = line.trim();
+                if !line.is_empty() && line.chars().all(|c| c.is_ascii_digit()) {
+                    break line.to_owned();
+                }
+            }
+        })
+        .await
+        .expect("the child's id arrives");
         assert!(alive(&child).await, "the grandchild runs");
         running.stop().await.expect("it stops");
         let mut gone = false;

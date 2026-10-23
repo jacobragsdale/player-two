@@ -26,12 +26,12 @@ You tag your own agent and watch it work, on Windows or in WSL. [Modes](protocol
   - support cancel.
   - An agent that says it must sign in fails the run with that agent's sign-in command.
 - [x] **P4-5 The fake agent.** A test binary that speaks ACP and follows a script: it reads, edits, runs a command, asks permission, fails, or needs signing in. It is the agent in every desk test from here on.
-- [ ] **P4-6 Modes.** Answer `session/request_permission` as the [Modes table](protocol.md#modes) says. In ask mode, wait for the window's answer.
-- [ ] **P4-7 Your own runs.**
+- [x] **P4-6 Modes.** Answer `session/request_permission` as the [Modes table](protocol.md#modes) says. In ask mode, wait for the window's answer.
+- [x] **P4-7 Your own runs.**
   - Your own tag runs at once at your default mode, posting `run.accepted`, `run.activity`, `run.result` and `run.ended`.
   - The message box shows the mode, with a one-click switch to full that becomes the new default.
   - Stop ends the run.
-- [ ] **P4-8 One at a time.** A place that is running something says so, and a second tag of it waits.
+- [x] **P4-8 One at a time.** A place that is running something says so, and a second tag of it waits.
 - [ ] **P4-9 The setup check.** For each place, the window checks for its agent and whether it is signed in. If not, it gives the one command to install it or sign in (for Cursor on Windows, `irm 'https://cursor.com/install?win32=true' | iex` and then `agent login`). Lift the idea, not the code, from v0.7.1's `src/desk/doctor.ts`.
 - [ ] **P4-10 The run in the window.**
   - Under the message: the state line, the live activity feed with outputs, and the answer as Markdown.
@@ -43,3 +43,7 @@ You tag your own agent and watch it work, on Windows or in WSL. [Modes](protocol
 On a work machine, you can tag `@you` and `@you/repo`, watch the agent work at each mode, answer its prompts, and stop it.
 
 ## Notes
+
+- **P4-6 to P4-8 landed in one commit.** Modes, your own runs and one run per place are one piece of code, `crates/desk/src/runs.rs`: the mode decides each step a run asks about, the run is what a tag of your own place starts, and the busy check is where it starts. They are tested together in `crates/desk/tests/own_runs.rs`.
+- **P4-7: a busy place.** A tag of your own place while it is busy is not run: it waits, as a teammate's request would, and the message shows it waiting. There is no queue.
+- **P4-7: a restart.** A run cut off by the app stopping is ended, as stopped, when the desk next connects, so that the chat does not show it working for ever.

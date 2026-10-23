@@ -35,7 +35,7 @@ describe("a person's message", () => {
   });
 
   test("keeps its author and text inert in the message around it", () => {
-    const item = { id: 1, author: '<img src=x onerror="pwned()">', ts: 0, text: HOSTILE, tags: [], replies: 0 };
+    const item = { id: 1, author: '<img src=x onerror="pwned()">', ts: 0, text: HOSTILE, tags: [], replies: 0, runs: [], waiting: [] };
     const markup = renderToStaticMarkup(<Message item={item} me="alice" onThread={null} />);
     expect(dangerous(markup)).toBeNull();
   });

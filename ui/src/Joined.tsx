@@ -109,6 +109,7 @@ export function Joined(): JSX.Element {
               setOpen(null);
               setThread(null);
             }}
+            mode={overview.default_mode}
           />
         )}
         {open !== null && thread !== null && (
@@ -123,6 +124,7 @@ export function Joined(): JSX.Element {
                 setThread(null);
               }}
               onLeft={null}
+              mode={overview.default_mode}
             />
           </div>
         )}

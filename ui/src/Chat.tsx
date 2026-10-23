@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 
 import { LeaveChannel } from "./Channels.tsx";
 import { Composer } from "./Composer.tsx";
-import type { ChatId, ChatView } from "./desk.ts";
+import type { ChatId, ChatView, Mode } from "./desk.ts";
 import { ask, problem } from "./deskClient.ts";
 import { useChat } from "./hooks.ts";
 import { Message } from "./Message.tsx";
@@ -23,6 +23,8 @@ interface Props {
   readonly onClose: (() => void) | null;
   /** Called once the person left this channel; null in a thread. */
   readonly onLeft: (() => void) | null;
+  /** The mode the person's own agent runs at by default. */
+  readonly mode: Mode;
 }
 
 /** The chat's name, or "Thread"; in a channel's top level, who else is in it and the button that leaves it; in a thread, the button that closes it. */
@@ -69,7 +71,7 @@ function Older({ chat }: { readonly chat: ChatId }): JSX.Element {
   );
 }
 
-export function Chat({ chat, me, thread, onThread, onClose, onLeft }: Props): JSX.Element {
+export function Chat({ chat, me, thread, onThread, onClose, onLeft, mode }: Props): JSX.Element {
   const view = useChat(chat, thread);
   const list = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
@@ -125,7 +127,7 @@ export function Chat({ chat, me, thread, onThread, onClose, onLeft }: Props): JS
           </div>
         ))}
       </div>
-      <Composer chat={chat} thread={thread} placeholder={thread === null ? `Message ${view.title}` : "Reply in the thread"} />
+      <Composer key={mode} chat={chat} thread={thread} mode={mode} placeholder={thread === null ? `Message ${view.title}` : "Reply in the thread"} />
     </section>
   );
 }

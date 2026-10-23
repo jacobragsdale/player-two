@@ -5,7 +5,7 @@
 //! window is typed by what is here and never by hand.
 
 use player_two_core::api::{ChannelInfo, Person};
-use player_two_core::event::{EventId, RunsIn, Tag};
+use player_two_core::event::{Activity, EventId, Mode, RunsIn, StepsBy, Tag};
 use player_two_core::names::{ChatId, PersonName, PlaceName};
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -42,7 +42,7 @@ pub enum Request {
         /// Which chat.
         chat: ChatId,
     },
-    /// Sends a message.
+    /// Sends a message, running the person's own agent at once wherever it tags their places.
     Send {
         /// Where.
         chat: ChatId,
@@ -50,6 +50,26 @@ pub enum Request {
         thread: Option<EventId>,
         /// What it says.
         text: String,
+        /// The mode for the person's own agent, which becomes their default; none keeps it.
+        mode: Option<Mode>,
+    },
+    /// Stops a run going on at one of this machine's places.
+    Stop {
+        /// The run, by its `run.accepted`.
+        run: EventId,
+    },
+    /// Answers a step a run waits on.
+    Answer {
+        /// The chat the run is in.
+        chat: ChatId,
+        /// The thread its events are in.
+        thread: EventId,
+        /// The run.
+        run: EventId,
+        /// The step.
+        prompt: String,
+        /// Whether it may go ahead.
+        allow: bool,
     },
     /// Marks everything in a chat as read.
     Read {
@@ -212,6 +232,8 @@ pub struct Overview {
     pub people: Vec<Person>,
     /// Every channel, joined or not.
     pub channels: Vec<ChannelInfo>,
+    /// The mode the person's own tags run at.
+    pub default_mode: Mode,
 }
 
 /// One line of the chat list.
@@ -263,6 +285,70 @@ pub struct Item {
     pub tags: Vec<Tag>,
     /// How many replies its thread has.
     pub replies: u32,
+    /// The runs that answer it.
+    pub runs: Vec<RunView>,
+    /// The tags of it nobody has answered yet: not run, declined or taken back.
+    pub waiting: Vec<Tag>,
+}
+
+/// How a run stands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum RunState {
+    /// It is going on.
+    Working,
+    /// It finished.
+    Done,
+    /// Its owner stopped it.
+    Stopped,
+    /// It failed.
+    Failed,
+}
+
+/// One run, as the window draws it under the message it answers.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Type)]
+pub struct RunView {
+    /// The run, by its `run.accepted`.
+    pub id: EventId,
+    /// The thread its events are in.
+    pub thread: EventId,
+    /// Whose machine it runs on.
+    pub owner: PersonName,
+    /// Which place.
+    pub place: PlaceName,
+    /// Where on the machine.
+    pub runs_in: RunsIn,
+    /// How much it may do.
+    pub mode: Mode,
+    /// Who answers its steps.
+    pub steps_by: StepsBy,
+    /// How it stands.
+    pub state: RunState,
+    /// Why it failed or was stopped, when it says.
+    pub reason: Option<String>,
+    /// What it did, each item as it now stands, in the order they began.
+    pub activity: Vec<Activity>,
+    /// The steps it asked about.
+    pub prompts: Vec<PromptView>,
+    /// The agent's answer, as Markdown.
+    pub result: Option<String>,
+    /// Whether this person may answer its steps.
+    pub may_answer: bool,
+    /// Whether the run is this machine's, so this person may stop it.
+    pub mine: bool,
+}
+
+/// One step a run asked about.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Type)]
+pub struct PromptView {
+    /// The step's id.
+    pub id: String,
+    /// What the agent wants to do.
+    pub what: String,
+    /// The yes or no, once given.
+    pub allow: Option<bool>,
+    /// Who gave it.
+    pub by: Option<PersonName>,
 }
 
 #[cfg(test)]

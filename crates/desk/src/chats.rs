@@ -4,10 +4,12 @@
 use std::collections::{BTreeMap, HashSet};
 
 use player_two_core::api::{ChannelInfo, Person, Presence};
-use player_two_core::event::{Body, Event, EventId, Message};
+use player_two_core::event::{
+    Body, Ending, Event, EventId, Message, RunDeclined, RunWithdrawn, StepsBy,
+};
 use player_two_core::names::{ChatId, PersonName};
 
-use crate::ui::{ChatSummary, ChatView, Item};
+use crate::ui::{ChatSummary, ChatView, Item, PromptView, RunState, RunView};
 
 /// How many characters of a message a notification shows.
 const NOTICE_LENGTH: usize = 200;
@@ -245,6 +247,151 @@ impl Chats {
             .collect()
     }
 
+    /// Every run in a chat, by the request it answers, and the requests answered in any way:
+    /// run, declined or taken back.
+    fn runs(
+        &self,
+        chat: &ChatId,
+    ) -> (
+        BTreeMap<EventId, Vec<RunView>>,
+        BTreeMap<EventId, Vec<PersonName>>,
+    ) {
+        let mut runs: BTreeMap<EventId, RunView> = BTreeMap::new();
+        let mut requests: BTreeMap<EventId, EventId> = BTreeMap::new();
+        let mut answered: BTreeMap<EventId, Vec<PersonName>> = BTreeMap::new();
+        let events = self.events.get(chat).into_iter().flat_map(BTreeMap::values);
+        for event in events {
+            match &event.body {
+                Body::RunAccepted(accepted) => {
+                    let asker = self
+                        .events
+                        .get(chat)
+                        .and_then(|events| events.get(&accepted.request))
+                        .map(|request| request.author.clone());
+                    let may_answer = event.author == self.me
+                        || (accepted.steps_by == StepsBy::Asker
+                            && asker.as_ref() == Some(&self.me));
+                    requests.insert(event.id, accepted.request);
+                    answered
+                        .entry(accepted.request)
+                        .or_default()
+                        .push(event.author.clone());
+                    runs.insert(
+                        event.id,
+                        RunView {
+                            id: event.id,
+                            thread: event.thread.unwrap_or(accepted.request),
+                            owner: event.author.clone(),
+                            place: accepted.place.clone(),
+                            runs_in: accepted.runs_in.clone(),
+                            mode: accepted.mode,
+                            steps_by: accepted.steps_by,
+                            state: RunState::Working,
+                            reason: None,
+                            activity: Vec::new(),
+                            prompts: Vec::new(),
+                            result: None,
+                            may_answer,
+                            mine: event.author == self.me,
+                        },
+                    );
+                }
+                Body::RunDeclined(RunDeclined { request }) => {
+                    answered
+                        .entry(*request)
+                        .or_default()
+                        .push(event.author.clone());
+                }
+                Body::RunWithdrawn(RunWithdrawn { request }) => {
+                    // Taken back, it is answered for everyone it tagged.
+                    let tagged: Vec<PersonName> = self
+                        .events
+                        .get(chat)
+                        .and_then(|events| events.get(request))
+                        .map(|asked| match &asked.body {
+                            Body::Message(message) => {
+                                message.tags.iter().map(|tag| tag.person.clone()).collect()
+                            }
+                            _ => Vec::new(),
+                        })
+                        .unwrap_or_default();
+                    answered.entry(*request).or_default().extend(tagged);
+                }
+                Body::RunActivity(activity) => {
+                    if let Some(run) = runs.get_mut(&activity.run) {
+                        for item in &activity.items {
+                            match run.activity.iter_mut().find(|kept| kept.id == item.id) {
+                                Some(kept) => *kept = item.clone(),
+                                None => run.activity.push(item.clone()),
+                            }
+                        }
+                    }
+                }
+                Body::RunPrompt(prompt) => {
+                    if let Some(run) = runs.get_mut(&prompt.run) {
+                        run.prompts.push(PromptView {
+                            id: prompt.prompt.clone(),
+                            what: prompt.what.clone(),
+                            allow: None,
+                            by: None,
+                        });
+                    }
+                }
+                Body::RunAnswer(answer) => {
+                    // The first answer counts; a later one finds the step answered.
+                    if let Some(prompt) = runs.get_mut(&answer.run).and_then(|run| {
+                        run.prompts
+                            .iter_mut()
+                            .find(|prompt| prompt.id == answer.prompt)
+                    }) && prompt.allow.is_none()
+                    {
+                        prompt.allow = Some(answer.allow);
+                        prompt.by = Some(event.author.clone());
+                    }
+                }
+                Body::RunResult(result) => {
+                    if let Some(run) = runs.get_mut(&result.run) {
+                        run.result = Some(result.text.clone());
+                    }
+                }
+                Body::RunEnded(ended) => {
+                    if let Some(run) = runs.get_mut(&ended.run) {
+                        run.state = match ended.how {
+                            Ending::Done => RunState::Done,
+                            Ending::Stopped => RunState::Stopped,
+                            Ending::Failed => RunState::Failed,
+                        };
+                        run.reason.clone_from(&ended.reason);
+                    }
+                }
+                Body::Message(_) => {}
+            }
+        }
+        let mut by_request: BTreeMap<EventId, Vec<RunView>> = BTreeMap::new();
+        for (id, run) in runs {
+            if let Some(request) = requests.get(&id) {
+                by_request.entry(*request).or_default().push(run);
+            }
+        }
+        (by_request, answered)
+    }
+
+    /// The runs this person's desk started that never said how they ended: a restart cut them
+    /// off. Each is given by its chat, thread and id.
+    #[must_use]
+    pub fn unfinished(&self) -> Vec<(ChatId, EventId, EventId)> {
+        let mut found = Vec::new();
+        for chat in self.events.keys() {
+            let (runs, _) = self.runs(chat);
+            for run in runs.values().flatten() {
+                if run.mine && run.state == RunState::Working {
+                    found.push((chat.clone(), run.thread, run.id));
+                }
+            }
+        }
+        found
+    }
+
     /// One chat's top level, or one thread of it.
     #[must_use]
     pub fn view(&self, chat: &ChatId, thread: Option<EventId>) -> ChatView {
@@ -265,15 +412,26 @@ impl Chats {
             .iter()
             .find(|(event, _)| self.is_unread(event))
             .map(|(event, _)| event.id);
+        let (mut runs, answered) = self.runs(chat);
         let items = shown
             .into_iter()
-            .map(|(event, message)| Item {
-                id: event.id,
-                author: event.author.clone(),
-                ts: event.ts,
-                text: message.text.clone(),
-                tags: message.tags.clone(),
-                replies: replies.get(&event.id).copied().unwrap_or_default(),
+            .map(|(event, message)| {
+                let answered_by = answered.get(&event.id).cloned().unwrap_or_default();
+                Item {
+                    id: event.id,
+                    author: event.author.clone(),
+                    ts: event.ts,
+                    text: message.text.clone(),
+                    tags: message.tags.clone(),
+                    replies: replies.get(&event.id).copied().unwrap_or_default(),
+                    runs: runs.remove(&event.id).unwrap_or_default(),
+                    waiting: message
+                        .tags
+                        .iter()
+                        .filter(|tag| !answered_by.contains(&tag.person))
+                        .cloned()
+                        .collect(),
+                }
             })
             .collect();
         let members = match chat {

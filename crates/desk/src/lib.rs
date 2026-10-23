@@ -12,7 +12,9 @@ pub mod files;
 pub mod hub;
 pub mod places;
 pub mod process;
+pub mod runs;
 pub mod system;
+pub mod tags;
 pub mod ui;
 
 use std::collections::BTreeMap;
@@ -27,7 +29,7 @@ use hub::{Hub, Incoming, NotJoined};
 use places::{Folder, Settings};
 use player_two_core::api::NewEvent;
 use player_two_core::event::RunsIn;
-use player_two_core::event::{Body, Event, EventId, Message};
+use player_two_core::event::{Body, Event, EventId, Message, Mode, RunAnswer, StepsBy};
 use player_two_core::join_code::JoinCode;
 use player_two_core::names::{ChannelName, ChatId, PersonName};
 use tokio::sync::{Notify, mpsc};
@@ -73,6 +75,12 @@ struct Inner {
     state: Mutex<State>,
     /// Rung when the run loop should look again: the person joined, or asked it to.
     wake: Notify,
+    /// The runs going on at this machine's places.
+    runs: Mutex<runs::Runs>,
+    /// Runs the person stopped, so that their ending says so.
+    stopped: Mutex<std::collections::HashSet<EventId>>,
+    /// Numbers the steps put to a person.
+    prompts: std::sync::atomic::AtomicU64,
 }
 
 #[derive(Debug)]
@@ -100,6 +108,9 @@ impl Desk {
                 chats: None,
             }),
             wake: Notify::new(),
+            runs: Mutex::new(runs::Runs::default()),
+            stopped: Mutex::new(std::collections::HashSet::new()),
+            prompts: std::sync::atomic::AtomicU64::new(1),
         };
         (
             Self {
@@ -160,8 +171,32 @@ impl Desk {
                 self.older(&chat).await?;
                 Ok(Response::Done)
             }
-            Request::Send { chat, thread, text } => {
-                self.send(chat, thread, text).await?;
+            Request::Send {
+                chat,
+                thread,
+                text,
+                mode,
+            } => {
+                self.send(chat, thread, text, mode).await?;
+                Ok(Response::Done)
+            }
+            Request::Stop { run } => {
+                self.stop_run(run)?;
+                Ok(Response::Done)
+            }
+            Request::Answer {
+                chat,
+                thread,
+                run,
+                prompt,
+                allow,
+            } => {
+                self.post(
+                    &chat,
+                    Some(thread),
+                    Body::RunAnswer(RunAnswer { run, prompt, allow }),
+                )
+                .await?;
                 Ok(Response::Done)
             }
             Request::Read { chat } => {
@@ -316,6 +351,9 @@ impl Desk {
             channels: chats
                 .map(|chats| chats.channels().to_vec())
                 .unwrap_or_default(),
+            default_mode: self
+                .settings()
+                .map_or(Mode::Ask, |settings| settings.default_mode),
         }
     }
 
@@ -350,19 +388,15 @@ impl Desk {
         Ok(())
     }
 
-    async fn send(
+    /// Posts an event as the person, shows it at once, and gives back its id. The stream brings
+    /// it too, which changes nothing: an event is kept by its id.
+    pub(crate) async fn post(
         &self,
-        chat: ChatId,
+        chat: &ChatId,
         thread: Option<EventId>,
-        text: String,
-    ) -> anyhow::Result<()> {
-        let text = text.trim_end().to_owned();
-        anyhow::ensure!(!text.trim().is_empty(), "there is nothing to send");
+        body: Body,
+    ) -> anyhow::Result<EventId> {
         let hub = self.hub()?;
-        let body = Body::Message(Message {
-            text,
-            tags: Vec::new(),
-        });
         let posted = hub
             .post(&NewEvent {
                 chat: chat.clone(),
@@ -370,22 +404,97 @@ impl Desk {
                 body: body.clone(),
             })
             .await?;
-        // The stream brings it too; showing it now saves waiting for that.
-        let mut state = self.state();
-        if let Some(chats) = state.chats.as_mut() {
-            let author = chats.me().clone();
-            chats.apply(Event {
+        let event = {
+            let mut state = self.state();
+            let chats = state
+                .chats
+                .as_mut()
+                .context("the chats have not loaded yet")?;
+            let event = Event {
                 id: posted.id,
                 chat: chat.clone(),
                 thread,
-                author,
+                author: chats.me().clone(),
                 ts: posted.ts,
                 body,
-            });
-        }
-        drop(state);
-        self.tell(ui::Event::Chat { chat });
+            };
+            chats.apply(event.clone());
+            event
+        };
+        self.answered(&event);
+        self.tell(ui::Event::Chat { chat: chat.clone() });
         self.tell(ui::Event::Overview);
+        Ok(posted.id)
+    }
+
+    /// Who this machine joined as, once the chats have loaded.
+    pub(crate) fn me(&self) -> Option<PersonName> {
+        self.state().chats.as_ref().map(|chats| chats.me().clone())
+    }
+
+    /// Sends a message, and starts a run at each of the person's own places it tags.
+    async fn send(
+        &self,
+        chat: ChatId,
+        thread: Option<EventId>,
+        text: String,
+        mode: Option<Mode>,
+    ) -> anyhow::Result<()> {
+        let text = text.trim_end().to_owned();
+        anyhow::ensure!(!text.trim().is_empty(), "there is nothing to send");
+        let (me, tags) = {
+            let state = self.state();
+            let chats = state
+                .chats
+                .as_ref()
+                .context("the chats have not loaded yet")?;
+            (chats.me().clone(), tags::read(&text, chats.people()))
+        };
+        let mut settings = self.settings()?;
+        if let Some(mode) = mode.filter(|mode| *mode != settings.default_mode) {
+            // Switching the mode in the message box makes it the default.
+            settings.default_mode = mode;
+            self.inner.files.write("settings.json", &settings)?;
+        }
+        let body = Body::Message(Message {
+            text: text.clone(),
+            tags: tags.clone(),
+        });
+        let id = self.post(&chat, thread, body.clone()).await?;
+        let request = Event {
+            id,
+            chat,
+            thread,
+            author: me.clone(),
+            ts: 0,
+            body,
+        };
+        for tag in tags.into_iter().filter(|tag| tag.person == me) {
+            if self.busy(&tag.place).is_some() {
+                // It waits, as a teammate's request would, until the place is free.
+                continue;
+            }
+            let runs_in = if tag.place.is_machine() {
+                settings.machine_runs_in.clone()
+            } else {
+                settings
+                    .folders
+                    .iter()
+                    .find(|folder| folder.name == tag.place)
+                    .map_or(RunsIn::Windows, |folder| folder.runs_in.clone())
+            };
+            self.start_run(runs::Order {
+                request: request.clone(),
+                asker: me.clone(),
+                text: text.clone(),
+                place: tag.place,
+                runs_in,
+                mode: settings.default_mode,
+                steps_by: StepsBy::Owner,
+                keep_going: false,
+            })
+            .await?;
+        }
         Ok(())
     }
 
@@ -420,6 +529,30 @@ impl Desk {
         }
         self.tell(ui::Event::Overview);
         Ok(())
+    }
+
+    /// Ends the runs this desk started that a restart cut off, so the chat does not show them
+    /// working for ever.
+    async fn end_unfinished(&self) {
+        let unfinished = self
+            .state()
+            .chats
+            .as_ref()
+            .map(Chats::unfinished)
+            .unwrap_or_default();
+        for (chat, thread, run) in unfinished {
+            if self.runs_going(run) {
+                continue;
+            }
+            let ended = Body::RunEnded(player_two_core::event::RunEnded {
+                run,
+                how: player_two_core::event::Ending::Stopped,
+                reason: Some("Player Two stopped while it ran".to_owned()),
+            });
+            if let Err(error) = self.post(&chat, Some(thread), ended).await {
+                eprintln!("error: cannot end a run cut off by a restart: {error:#}");
+            }
+        }
     }
 
     /// Fetches the people and channel lists again.
@@ -527,6 +660,7 @@ impl Desk {
                 chats.add_page(&chat, page, last);
             }
         }
+        self.end_unfinished().await;
         let after = self
             .state()
             .chats
@@ -543,6 +677,7 @@ impl Desk {
                 incoming = stream.next() => match incoming? {
                     Some(Incoming::Event(event)) => {
                         let chat = event.chat.clone();
+                        self.answered(&event);
                         let notice = self.state().chats.as_mut().and_then(|chats| {
                             let notice = chats.notice(&event);
                             chats.apply(event);

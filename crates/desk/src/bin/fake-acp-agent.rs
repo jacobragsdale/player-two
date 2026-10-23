@@ -1,4 +1,5 @@
-//! A scripted ACP agent for the desk's tests, and nothing else: it acts on words in its prompt.
+//! A scripted ACP agent for the desk's tests, and nothing else: it acts on words in its prompt,
+//! after the desk's preamble where there is one.
 //!
 //! - `read`: reads a file, without asking.
 //! - `edit`: asks to edit a file, and edits it if allowed.
@@ -94,9 +95,13 @@ async fn asked_call(
 /// One turn of the script.
 async fn turn(
     connection: ConnectionTo<Client>,
-    prompt: String,
+    whole: String,
     cancelled: Arc<Notify>,
 ) -> Result<StopReason, Error> {
+    let prompt = whole
+        .rsplit_once("\n---\n")
+        .map_or(whole.as_str(), |(_, request)| request)
+        .to_owned();
     let mut did = Vec::new();
     if prompt.contains("sign in") {
         return Err(Error::auth_required());
@@ -159,7 +164,7 @@ async fn turn(
         format!("Did: {}.", did.join(", "))
     };
     if prompt.contains("echo") {
-        answer = format!("{answer}\n\n{prompt}");
+        answer = format!("{answer}\n\n{whole}");
     }
     say(
         &connection,
