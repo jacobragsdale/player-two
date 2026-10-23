@@ -185,7 +185,7 @@ pub enum StepsBy {
 }
 
 /// Where on a machine a run happens: `windows`, or `wsl:<distro>`.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Type)]
 #[serde(try_from = "String", into = "String")]
 #[specta(type = String)]
 pub enum RunsIn {

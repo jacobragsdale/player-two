@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use common::{Hub, overview, until};
 use player_two_core::event::RunsIn;
 use player_two_desk::Desk;
+use player_two_desk::agents::AgentKind;
 use player_two_desk::files::Files;
 use player_two_desk::places::Settings;
 use player_two_desk::ui::{Request, Response};
@@ -166,4 +167,29 @@ async fn a_desk_without_a_dialog_says_so() {
     let alice = hub.joined("alice").await;
     let picked = alice.handle(Request::PickFolder).await;
     assert!(picked.is_err_and(|error| error.contains("folder dialog")));
+}
+
+#[tokio::test]
+async fn the_agent_chosen_for_a_system_is_kept() {
+    let hub = Hub::start().await;
+    let alice = hub.joined("alice").await;
+    common::fake_agent(&hub, &alice, "alice").await;
+    let chose = alice
+        .handle(Request::ChooseAgent {
+            runs_in: RunsIn::Windows,
+            kind: AgentKind::Claude,
+        })
+        .await;
+    assert_eq!(chose, Ok(Response::Done));
+    let kept: Settings = Files::new(hub.folder("alice"))
+        .read("settings.json")
+        .expect("read")
+        .expect("there");
+    assert_eq!(kept.agents.get(&RunsIn::Windows), Some(&AgentKind::Claude));
+    // Claude Code is not there, so the agent that is still runs.
+    let Ok(Response::Places(places)) = alice.handle(Request::Places).await else {
+        panic!("the places are listed");
+    };
+    assert_eq!(places.agents.len(), 1);
+    assert!(places.agents[0].chosen);
 }

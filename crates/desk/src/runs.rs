@@ -239,7 +239,8 @@ impl Desk {
             .look(crate::looking::Where::At(order.runs_in.clone()))
             .await?
             .agents;
-        let agent = agents::for_system(&found, &order.runs_in).ok_or_else(|| {
+        let chosen = self.settings()?.agents.get(&order.runs_in).copied();
+        let agent = agents::for_system(&found, &order.runs_in, chosen).ok_or_else(|| {
             let system = match &order.runs_in {
                 RunsIn::Windows => "Windows".to_owned(),
                 RunsIn::Wsl(distro) => distro.clone(),

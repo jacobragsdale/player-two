@@ -210,13 +210,18 @@ pub async fn here(custom: Option<&[String]>) -> Vec<Found> {
     }
 }
 
-/// The agent to run at a system: the most preferred one found there.
+/// The agent to run at a system: the one chosen there when it is found, or else the most
+/// preferred one found there.
 #[must_use]
-pub fn for_system<'a>(found: &'a [Found], runs_in: &RunsIn) -> Option<&'a Found> {
-    found
-        .iter()
-        .filter(|agent| &agent.runs_in == runs_in)
-        .min_by_key(|agent| agent.kind)
+pub fn for_system<'a>(
+    found: &'a [Found],
+    runs_in: &RunsIn,
+    chosen: Option<AgentKind>,
+) -> Option<&'a Found> {
+    let there = || found.iter().filter(|agent| &agent.runs_in == runs_in);
+    there()
+        .find(|agent| Some(agent.kind) == chosen)
+        .or_else(|| there().min_by_key(|agent| agent.kind))
 }
 
 #[cfg(test)]
@@ -234,11 +239,16 @@ mod tests {
         assert_eq!(found[0].path, "/home/bob/.local/bin:/usr/bin");
         assert_eq!(found[0].home, "/home/bob");
         assert_eq!(found[0].args, ["acp"]);
+        let ubuntu = RunsIn::Wsl("Ubuntu".to_owned());
+        let chosen = |choice| for_system(&found, &ubuntu, choice).map(|agent| agent.kind);
+        assert_eq!(chosen(None), Some(AgentKind::Cursor));
+        assert_eq!(chosen(Some(AgentKind::Claude)), Some(AgentKind::Claude));
         assert_eq!(
-            for_system(&found, &RunsIn::Wsl("Ubuntu".to_owned())).map(|agent| agent.kind),
-            Some(AgentKind::Cursor)
+            chosen(Some(AgentKind::Copilot)),
+            Some(AgentKind::Cursor),
+            "a choice not there falls back to the preferred"
         );
-        assert!(for_system(&found, &RunsIn::Windows).is_none());
+        assert!(for_system(&found, &RunsIn::Windows, None).is_none());
         assert!(parse_distro("Ubuntu", "no mark here").is_empty());
     }
 

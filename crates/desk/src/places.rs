@@ -1,6 +1,7 @@
 //! The places a person shares: their machine, and the folders they picked to add. Kept in
 //! `settings.json` with the person's other settings.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use player_two_core::api::{PlaceInfo, PlaceKind};
@@ -19,9 +20,13 @@ pub struct Settings {
     /// Where `@me` runs by default: Windows, or a WSL distro.
     #[serde(default = "windows")]
     pub machine_runs_in: RunsIn,
-    /// The checkouts shared, by name.
+    /// The folders shared, by name.
     #[serde(default)]
     pub folders: Vec<Folder>,
+    /// The agent chosen for each system that has more than one. Elsewhere the most preferred
+    /// runs, which is Cursor when it is there.
+    #[serde(default)]
+    pub agents: BTreeMap<RunsIn, agents::AgentKind>,
     /// An agent of the person's own choosing, run on this system in place of any found: a
     /// program and its arguments, speaking ACP.
     #[serde(default)]
@@ -34,6 +39,7 @@ impl Default for Settings {
             default_mode: ask(),
             machine_runs_in: windows(),
             folders: Vec::new(),
+            agents: BTreeMap::new(),
             custom_agent: None,
         }
     }

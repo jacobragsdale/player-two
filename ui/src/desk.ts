@@ -20,6 +20,8 @@ export type AgentInfo = {
 	kind: AgentKind,
 	/**  Where. */
 	runs_in: RunsIn,
+	/**  Whether it is the one that runs there. */
+	chosen: boolean,
 };
 
 /**  The agents Player Two knows how to start over ACP, in the order it prefers them. */
@@ -316,6 +318,12 @@ to: string } |
 { type: "remove_folder"; 
 /**  Its name. */
 name: PlaceName } | 
+/**  Chooses which agent runs at a system that has more than one. */
+{ type: "choose_agent"; 
+/**  Windows, or a WSL distro. */
+runs_in: RunsIn; 
+/**  The agent to run there. */
+kind: AgentKind } | 
 /**
  *  Starts the agent at a system and opens a session, to see that it is installed and
  *  signed in.

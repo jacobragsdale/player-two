@@ -268,17 +268,24 @@ impl Desk {
                         unavailable: looked.unavailable(folder),
                     })
                     .collect();
+                let runs = |agent: &agents::Found| {
+                    let chosen = settings.agents.get(&agent.runs_in).copied();
+                    agents::for_system(found, &agent.runs_in, chosen)
+                        .is_some_and(|running| running.kind == agent.kind)
+                };
+                let agents = found
+                    .iter()
+                    .map(|agent| AgentInfo {
+                        kind: agent.kind,
+                        runs_in: agent.runs_in.clone(),
+                        chosen: runs(agent),
+                    })
+                    .collect();
                 Ok(Response::Places(PlacesView {
                     machine_runs_in: settings.machine_runs_in,
                     folders,
                     distros,
-                    agents: found
-                        .iter()
-                        .map(|agent| AgentInfo {
-                            kind: agent.kind,
-                            runs_in: agent.runs_in.clone(),
-                        })
-                        .collect(),
+                    agents,
                 }))
             }
             Request::PickFolder => {
@@ -307,9 +314,16 @@ impl Desk {
                 self.save_settings(&settings).await?;
                 Ok(Response::Done)
             }
+            Request::ChooseAgent { runs_in, kind } => {
+                let mut settings = self.settings()?;
+                settings.agents.insert(runs_in, kind);
+                self.save_settings(&settings).await?;
+                Ok(Response::Done)
+            }
             Request::CheckAgent { runs_in } => {
                 let found = self.look(Where::At(runs_in.clone())).await?.agents;
-                let Some(agent) = agents::for_system(&found, &runs_in) else {
+                let chosen = self.settings()?.agents.get(&runs_in).copied();
+                let Some(agent) = agents::for_system(&found, &runs_in, chosen) else {
                     return Ok(Response::Checked {
                         ready: false,
                         message: "no agent is installed there".to_owned(),

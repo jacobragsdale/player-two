@@ -20,7 +20,7 @@ Shared folders are picked with the folder dialog, setting up an agent is part of
   - Docker Desktop's distros, `docker-desktop` and `docker-desktop-data`, are never searched or offered.
   - Settings keeps a folder that is gone, or whose distro has no agent, and marks it as not available.
 - [x] **P6-4 Tags that name nothing say why.** The line under the message says which it is: nobody has that name, the person does not share that place, or the person has no agent set up yet. A person with no places advertised has none.
-- [ ] **P6-5 Choosing the agent.** When a system has more than one agent, Settings lets the owner choose which runs there, with Cursor the default when it was found. The choice is kept per system in `settings.json`. `custom_agent` stays a setting in the file only.
+- [x] **P6-5 Choosing the agent.** When a system has more than one agent, Settings lets the owner choose which runs there, with Cursor the default when it was found. The choice is kept per system in `settings.json`. `custom_agent` stays a setting in the file only.
 - [ ] **P6-6 Setting up an agent.**
   - After Join, one step that can be skipped asks which agent the person uses. Settings has the same section. An agent already installed is chosen for them, and the step goes straight to Check.
   - Cursor: a Set up button makes the desk run the official installer, `irm 'https://cursor.com/install?win32=true' | iex`, and shows what it prints. The command is fixed in the desk, never sent by the window. It is also shown to copy, for when the button fails.

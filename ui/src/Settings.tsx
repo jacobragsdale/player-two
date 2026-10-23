@@ -79,7 +79,8 @@ function Command({ text }: { readonly text: string }): JSX.Element {
 }
 
 /** One agent found, with a button that starts it to see that it is ready and signed in. */
-function AgentRow({ agent, wsl }: { readonly agent: AgentInfo; readonly wsl: boolean }): JSX.Element {
+/** One agent found: the one that runs on its system has a Check, and any other a button that makes it the one. */
+function AgentRow({ agent, wsl, alone, onChoose }: { readonly agent: AgentInfo; readonly wsl: boolean; readonly alone: boolean; readonly onChoose: () => void }): JSX.Element {
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState<{ readonly ready: boolean; readonly message: string } | null>(null);
   const check = (): void => {
@@ -102,9 +103,16 @@ function AgentRow({ agent, wsl }: { readonly agent: AgentInfo; readonly wsl: boo
       <div className="flex items-center gap-2">
         <span className="font-medium">{LABELS[agent.kind]}</span>
         {wsl && <span className="text-xs text-muted-foreground">on {where(agent.runs_in)}</span>}
-        <Button type="button" variant="ghost" size="xs" className="ml-auto" disabled={checking} onClick={check}>
-          {checking ? "Checking…" : "Check"}
-        </Button>
+        {!alone && agent.chosen && <span className="text-xs text-muted-foreground">· runs there</span>}
+        {agent.chosen ? (
+          <Button type="button" variant="ghost" size="xs" className="ml-auto" disabled={checking} onClick={check}>
+            {checking ? "Checking…" : "Check"}
+          </Button>
+        ) : (
+          <Button type="button" variant="ghost" size="xs" className="ml-auto" onClick={onChoose}>
+            Use this one
+          </Button>
+        )}
       </div>
       {result !== null && <p className={result.ready ? "text-xs text-emerald-700 dark:text-emerald-400" : "text-xs text-destructive"}>{result.message}</p>}
     </li>
@@ -252,7 +260,15 @@ export function Settings({ me, onBack }: { readonly me: string; readonly onBack:
       )}
       <ul>
         {places.agents.map((agent) => (
-          <AgentRow key={`${agent.kind}:${agent.runs_in}`} agent={agent} wsl={wsl} />
+          <AgentRow
+            key={`${agent.kind}:${agent.runs_in}`}
+            agent={agent}
+            wsl={wsl}
+            alone={places.agents.filter((other) => other.runs_in === agent.runs_in).length === 1}
+            onChoose={() => {
+              change({ type: "choose_agent", runs_in: agent.runs_in, kind: agent.kind });
+            }}
+          />
         ))}
       </ul>
 

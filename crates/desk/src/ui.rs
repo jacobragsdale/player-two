@@ -109,6 +109,13 @@ pub enum Request {
         /// Its name.
         name: PlaceName,
     },
+    /// Chooses which agent runs at a system that has more than one.
+    ChooseAgent {
+        /// Windows, or a WSL distro.
+        runs_in: RunsIn,
+        /// The agent to run there.
+        kind: AgentKind,
+    },
     /// Starts the agent at a system and opens a session, to see that it is installed and
     /// signed in.
     CheckAgent {
@@ -284,6 +291,8 @@ pub struct AgentInfo {
     pub kind: AgentKind,
     /// Where.
     pub runs_in: RunsIn,
+    /// Whether it is the one that runs there.
+    pub chosen: bool,
 }
 
 /// The chat list, the people and how the connection stands.
