@@ -25,7 +25,7 @@ You tag your own agent and watch it work, on Windows or in WSL. [Modes](protocol
   - turn session updates into activity items, with the verb-object-outcome wording lifted from v0.7.1's `src/desk/agents/activity.ts`;
   - support cancel.
   - An agent that says it must sign in fails the run with that agent's sign-in command.
-- [ ] **P4-5 The fake agent.** A test binary that speaks ACP and follows a script: it reads, edits, runs a command, asks permission, fails, or needs signing in. It is the agent in every desk test from here on.
+- [x] **P4-5 The fake agent.** A test binary that speaks ACP and follows a script: it reads, edits, runs a command, asks permission, fails, or needs signing in. It is the agent in every desk test from here on.
 - [ ] **P4-6 Modes.** Answer `session/request_permission` as the [Modes table](protocol.md#modes) says. In ask mode, wait for the window's answer.
 - [ ] **P4-7 Your own runs.**
   - Your own tag runs at once at your default mode, posting `run.accepted`, `run.activity`, `run.result` and `run.ended`.
