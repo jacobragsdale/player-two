@@ -2,7 +2,7 @@
 
 use player_two_core::api::NewEvent;
 use player_two_core::event::{Body, Event, EventId, Message, RunAccepted, StepsBy};
-use player_two_core::names::PersonName;
+use player_two_core::names::{PersonName, PlaceName};
 use rusqlite::Connection;
 
 use crate::store;
@@ -72,11 +72,15 @@ pub fn may_post(
     };
     let allowed = match (&new.body, request, run) {
         (Body::Message(_), _, _) => true,
-        (Body::RunAccepted(accepted), Some(request), _) => tags(&request)
-            .iter()
-            .any(|tag| &tag.person == author && tag.place == accepted.place),
+        (Body::RunAccepted(accepted), Some(request), _) => {
+            tags(&request)
+                .iter()
+                .any(|tag| &tag.person == author && tag.place == accepted.place)
+                || follows_run_of(connection, &request, author, Some(&accepted.place))?
+        }
         (Body::RunDeclined(_), Some(request), _) => {
             tags(&request).iter().any(|tag| &tag.person == author)
+                || follows_run_of(connection, &request, author, None)?
         }
         (Body::RunWithdrawn(_), Some(request), _) => &request.author == author,
         (Body::RunAnswer(_), _, Some((owner, accepted))) => {
@@ -90,6 +94,44 @@ pub fn may_post(
     } else {
         refused("only the place's owner, or for some kinds whoever asked, may post that")
     }
+}
+
+/// Whether `request` is a follow-up of a run `owner` let go at `place` (any place, when none is
+/// given): a message in that run's thread, written by whoever asked for the run.
+fn follows_run_of(
+    connection: &Connection,
+    request: &Event,
+    owner: &PersonName,
+    place: Option<&PlaceName>,
+) -> anyhow::Result<bool> {
+    let Some(thread) = request.thread else {
+        return Ok(false);
+    };
+    let mut statement = connection.prepare(&format!(
+        "SELECT {} FROM events WHERE chat = ?1 AND thread = ?2 AND kind = 'run.accepted' AND author = ?3 AND id < ?4",
+        store::EVENT_COLUMNS
+    ))?;
+    let mut rows = statement.query((
+        request.chat.to_string(),
+        thread.0,
+        owner.as_str(),
+        request.id.0,
+    ))?;
+    while let Some(row) = rows.next()? {
+        let event = store::read_event(row)?;
+        let Body::RunAccepted(accepted) = &event.body else {
+            continue;
+        };
+        if place.is_some_and(|place| place != &accepted.place) {
+            continue;
+        }
+        if store::event(connection, accepted.request)?
+            .is_some_and(|asked| asked.author == request.author)
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// Whether `author` asked for the run and its owner handed them the steps.

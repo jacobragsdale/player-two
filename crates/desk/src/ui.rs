@@ -115,6 +115,43 @@ pub enum Request {
         /// Windows, or a WSL distro.
         runs_in: RunsIn,
     },
+    /// Asks what the approval card for a place needs: where it may run, and whether a checkout
+    /// has changes not committed.
+    Approval {
+        /// The place tagged.
+        place: PlaceName,
+    },
+    /// Lets a request, or a follow-up, run at one of this person's places.
+    Approve {
+        /// The chat it is in.
+        chat: ChatId,
+        /// The message asking.
+        request: EventId,
+        /// The place it runs at.
+        place: PlaceName,
+        /// How much it may do.
+        mode: Mode,
+        /// Where on the machine.
+        runs_in: RunsIn,
+        /// Who answers its steps.
+        steps_by: StepsBy,
+        /// Whether the asker's follow-ups run without a new click.
+        keep_going: bool,
+    },
+    /// Declines a request to this person.
+    Decline {
+        /// The chat it is in.
+        chat: ChatId,
+        /// The message asking.
+        request: EventId,
+    },
+    /// Takes back a request this person made.
+    Withdraw {
+        /// The chat it is in.
+        chat: ChatId,
+        /// The message asking.
+        request: EventId,
+    },
     /// Sets where `@me` runs by default.
     SetMachineRunsIn {
         /// Windows, or a WSL distro.
@@ -144,6 +181,15 @@ pub enum Response {
     Chat(ChatView),
     /// The answer to [`Request::Places`].
     Places(PlacesView),
+    /// The answer to [`Request::Approval`].
+    Approval {
+        /// Where it may run: Windows, or a WSL distro with an agent in it.
+        choices: Vec<RunsIn>,
+        /// Where it runs unless the owner picks another.
+        runs_in: RunsIn,
+        /// Whether a checkout has changes not committed, which an edit would run among.
+        dirty: bool,
+    },
     /// The answer to [`Request::CheckAgent`].
     Checked {
         /// Whether the agent opened a session.
@@ -302,6 +348,11 @@ pub struct Item {
     pub runs: Vec<RunView>,
     /// The tags of it nobody has answered yet: not run, declined or taken back.
     pub waiting: Vec<Tag>,
+    /// For a follow-up nobody has answered yet, the run it follows: its owner decides whether it
+    /// runs, with that run's settings.
+    pub follows: Option<RunView>,
+    /// Lines for the `@` mentions in it that name nobody, or a place not shared.
+    pub unknown: Vec<String>,
 }
 
 /// How a run stands.

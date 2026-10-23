@@ -30,7 +30,7 @@ A teammate's tag runs on your machine only after you approve it, and they can he
 - [ ] **P5-6 Waiting requests.**
   - Requests that arrived while the owner's app was closed are shown when it opens.
   - None of them runs until clicked, `keep_going` included, since it lapses after an hour anyway.
-- [ ] **P5-7 The scenario test.** It uses the fake agent:
+- [x] **P5-7 The scenario test.** It uses the fake agent:
   1. Jacob asks `@alice` to fix pip's proxy.
   2. Alice approves at ask mode and hands the steps to Jacob.
   3. Jacob allows one step and rejects one.

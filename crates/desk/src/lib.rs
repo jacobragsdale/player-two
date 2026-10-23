@@ -279,6 +279,57 @@ impl Desk {
                 };
                 Ok(checked)
             }
+            Request::Approval { place } => self.approval(&place).await,
+            Request::Approve {
+                chat,
+                request,
+                place,
+                mode,
+                runs_in,
+                steps_by,
+                keep_going,
+            } => {
+                let asked = self.event(&chat, request)?;
+                let Body::Message(message) = &asked.body else {
+                    anyhow::bail!("that is not a request");
+                };
+                let text = message.text.clone();
+                let asker = asked.author.clone();
+                self.start_run(runs::Order {
+                    request: asked,
+                    asker,
+                    text,
+                    place,
+                    runs_in,
+                    mode,
+                    steps_by,
+                    keep_going,
+                })
+                .await?;
+                Ok(Response::Done)
+            }
+            Request::Decline { chat, request } => {
+                let asked = self.event(&chat, request)?;
+                let thread = asked.thread.unwrap_or(asked.id);
+                self.post(
+                    &chat,
+                    Some(thread),
+                    Body::RunDeclined(player_two_core::event::RunDeclined { request }),
+                )
+                .await?;
+                Ok(Response::Done)
+            }
+            Request::Withdraw { chat, request } => {
+                let asked = self.event(&chat, request)?;
+                let thread = asked.thread.unwrap_or(asked.id);
+                self.post(
+                    &chat,
+                    Some(thread),
+                    Body::RunWithdrawn(player_two_core::event::RunWithdrawn { request }),
+                )
+                .await?;
+                Ok(Response::Done)
+            }
             Request::SetMachineRunsIn { runs_in } => {
                 let mut settings = self.settings()?;
                 settings.machine_runs_in = runs_in;
@@ -348,6 +399,93 @@ impl Desk {
             runs_in,
         });
         self.save_settings(&settings).await
+    }
+
+    /// One event of a chat, as the desk has it.
+    fn event(&self, chat: &ChatId, id: EventId) -> anyhow::Result<Event> {
+        let state = self.state();
+        let chats = state
+            .chats
+            .as_ref()
+            .context("the chats have not loaded yet")?;
+        chats
+            .event(chat, id)
+            .cloned()
+            .context("that message is not here")
+    }
+
+    /// What the approval card for a place needs.
+    async fn approval(
+        &self,
+        place: &player_two_core::names::PlaceName,
+    ) -> anyhow::Result<Response> {
+        let settings = self.settings()?;
+        if place.is_machine() {
+            let found = self.find_agents().await?;
+            let mut choices: Vec<RunsIn> = Vec::new();
+            for agent in &found {
+                if !choices.contains(&agent.runs_in) {
+                    choices.push(agent.runs_in.clone());
+                }
+            }
+            let runs_in = if choices.contains(&settings.machine_runs_in) {
+                settings.machine_runs_in
+            } else {
+                choices.first().cloned().unwrap_or(RunsIn::Windows)
+            };
+            return Ok(Response::Approval {
+                choices,
+                runs_in,
+                dirty: false,
+            });
+        }
+        let folder = settings
+            .folders
+            .iter()
+            .find(|folder| &folder.name == place)
+            .context("that place is not shared any more")?;
+        let dirty = places::dirty(&folder.path, &folder.runs_in).await;
+        Ok(Response::Approval {
+            choices: vec![folder.runs_in.clone()],
+            runs_in: folder.runs_in.clone(),
+            dirty,
+        })
+    }
+
+    /// Runs a follow-up at once when the person let its asker keep going and the thread's
+    /// session is still kept.
+    async fn keep_going(&self, event: &Event) {
+        let Some(me) = self.me() else {
+            return;
+        };
+        let followed = self
+            .state()
+            .chats
+            .as_ref()
+            .and_then(|chats| chats.followed(event));
+        let Some(run) = followed.filter(|run| run.owner == me && run.state == ui::RunState::Done)
+        else {
+            return;
+        };
+        if !self.keeps_going(run.thread, &run.place) || self.busy(&run.place).is_some() {
+            return;
+        }
+        let Body::Message(message) = &event.body else {
+            return;
+        };
+        let order = runs::Order {
+            request: event.clone(),
+            asker: event.author.clone(),
+            text: message.text.clone(),
+            place: run.place.clone(),
+            runs_in: run.runs_in.clone(),
+            mode: run.mode,
+            steps_by: run.steps_by,
+            keep_going: true,
+        };
+        if let Err(error) = self.start_run(order).await {
+            eprintln!("error: cannot run a follow-up: {error:#}");
+        }
     }
 
     /// The address of the hub this machine joined, if it has.
@@ -591,6 +729,14 @@ impl Desk {
 
     /// Keeps the desk connected to the hub, for as long as the app runs.
     pub async fn run(&self) {
+        let reaper = self.clone();
+        tokio::spawn(async move {
+            let mut minute = tokio::time::interval(Duration::from_secs(60));
+            loop {
+                minute.tick().await;
+                reaper.forget_quiet().await;
+            }
+        });
         let mut delay = Duration::from_secs(1);
         loop {
             let identity = match self.inner.files.identity() {
@@ -702,6 +848,7 @@ impl Desk {
                     Some(Incoming::Event(event)) => {
                         let chat = event.chat.clone();
                         self.answered(&event);
+                        let follow_up = event.clone();
                         let notice = self.state().chats.as_mut().and_then(|chats| {
                             let notice = chats.notice(&event);
                             chats.apply(event);
@@ -712,6 +859,7 @@ impl Desk {
                         if let Some((title, body)) = notice {
                             self.tell(ui::Event::Notify { chat, title, body });
                         }
+                        self.keep_going(&follow_up).await;
                     }
                     Some(Incoming::Presence(presence)) => {
                         if let Some(chats) = self.state().chats.as_mut() {

@@ -147,6 +147,13 @@ export type Item = {
 	runs: RunView[],
 	/**  The tags of it nobody has answered yet: not run, declined or taken back. */
 	waiting: Tag[],
+	/**
+	 *  For a follow-up nobody has answered yet, the run it follows: its owner decides whether it
+	 *  runs, with that run's settings.
+	 */
+	follows: RunView | null,
+	/**  Lines for the `@` mentions in it that name nobody, or a place not shared. */
+	unknown: string[],
 };
 
 /**  How much a run may do. */
@@ -323,6 +330,41 @@ name: PlaceName } |
 { type: "check_agent"; 
 /**  Windows, or a WSL distro. */
 runs_in: RunsIn } | 
+/**
+ *  Asks what the approval card for a place needs: where it may run, and whether a checkout
+ *  has changes not committed.
+ */
+{ type: "approval"; 
+/**  The place tagged. */
+place: PlaceName } | 
+/**  Lets a request, or a follow-up, run at one of this person's places. */
+{ type: "approve"; 
+/**  The chat it is in. */
+chat: ChatId; 
+/**  The message asking. */
+request: number; 
+/**  The place it runs at. */
+place: PlaceName; 
+/**  How much it may do. */
+mode: Mode; 
+/**  Where on the machine. */
+runs_in: RunsIn; 
+/**  Who answers its steps. */
+steps_by: StepsBy; 
+/**  Whether the asker's follow-ups run without a new click. */
+keep_going: boolean } | 
+/**  Declines a request to this person. */
+{ type: "decline"; 
+/**  The chat it is in. */
+chat: ChatId; 
+/**  The message asking. */
+request: number } | 
+/**  Takes back a request this person made. */
+{ type: "withdraw"; 
+/**  The chat it is in. */
+chat: ChatId; 
+/**  The message asking. */
+request: number } | 
 /**  Sets where `@me` runs by default. */
 { type: "set_machine_runs_in"; 
 /**  Windows, or a WSL distro. */
@@ -333,13 +375,13 @@ export type Response =
 /**  The answer to [`Request::Hello`]. */
 ({ type: "hello"; 
 /**  The version the hub, the app and the desk all share. */
-version: string }) & { folders?: never; joined?: never; message?: never; ready?: never; suggested_name?: never } | 
+version: string }) & { choices?: never; dirty?: never; folders?: never; joined?: never; message?: never; ready?: never; runs_in?: never; suggested_name?: never } | 
 /**  The answer to [`Request::Setup`]. */
 ({ type: "setup"; 
 /**  The name this machine joined under, once it has. */
 joined: PersonName | null; 
 /**  The name to offer, from the Windows user name. */
-suggested_name: string | null }) & { folders?: never; message?: never; ready?: never; version?: never } | 
+suggested_name: string | null }) & { choices?: never; dirty?: never; folders?: never; message?: never; ready?: never; runs_in?: never; version?: never } | 
 /**  The answer to [`Request::Overview`]. */
 {
 	type: "overview",
@@ -352,18 +394,26 @@ suggested_name: string | null }) & { folders?: never; message?: never; ready?: n
 {
 	type: "places",
 } & PlacesView | 
+/**  The answer to [`Request::Approval`]. */
+({ type: "approval"; 
+/**  Where it may run: Windows, or a WSL distro with an agent in it. */
+choices: RunsIn[]; 
+/**  Where it runs unless the owner picks another. */
+runs_in: RunsIn; 
+/**  Whether a checkout has changes not committed, which an edit would run among. */
+dirty: boolean }) & { folders?: never; joined?: never; message?: never; ready?: never; suggested_name?: never; version?: never } | 
 /**  The answer to [`Request::CheckAgent`]. */
 ({ type: "checked"; 
 /**  Whether the agent opened a session. */
 ready: boolean; 
 /**  What was found, in words. */
-message: string }) & { folders?: never; joined?: never; suggested_name?: never; version?: never } | 
+message: string }) & { choices?: never; dirty?: never; folders?: never; joined?: never; runs_in?: never; suggested_name?: never; version?: never } | 
 /**  The answer to [`Request::Suggestions`]. */
 ({ type: "suggestions"; 
 /**  Checkouts not shared yet. */
-folders: Folder[] }) & { joined?: never; message?: never; ready?: never; suggested_name?: never; version?: never } | 
+folders: Folder[] }) & { choices?: never; dirty?: never; joined?: never; message?: never; ready?: never; runs_in?: never; suggested_name?: never; version?: never } | 
 /**  The request was done, and there is nothing more to say. */
-({ type: "done" }) & { folders?: never; joined?: never; message?: never; ready?: never; suggested_name?: never; version?: never };
+({ type: "done" }) & { choices?: never; dirty?: never; folders?: never; joined?: never; message?: never; ready?: never; runs_in?: never; suggested_name?: never; version?: never };
 
 /**  How a run stands. */
 export type RunState = 

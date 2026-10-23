@@ -157,6 +157,12 @@ impl Chats {
         Some((title, body))
     }
 
+    /// One event of a chat.
+    #[must_use]
+    pub fn event(&self, chat: &ChatId, id: EventId) -> Option<&Event> {
+        self.events.get(chat)?.get(&id)
+    }
+
     /// The newest event the desk has seen, in any chat.
     #[must_use]
     pub fn last_id(&self) -> Option<EventId> {
@@ -392,6 +398,96 @@ impl Chats {
         found
     }
 
+    /// The thread so far, before `before`, as a fresh session is given it: who said what, and
+    /// what the agent answered. Empty when there was nothing before.
+    #[must_use]
+    pub fn transcript(&self, chat: &ChatId, thread: EventId, before: EventId) -> String {
+        let lines: Vec<String> = self
+            .events
+            .get(chat)
+            .into_iter()
+            .flat_map(BTreeMap::values)
+            .filter(|event| {
+                event.id < before && (event.id == thread || event.thread == Some(thread))
+            })
+            .filter_map(|event| match &event.body {
+                Body::Message(message) => Some(format!("{}: {}", event.author, message.text)),
+                Body::RunResult(result) => Some(format!("You answered: {}", result.text)),
+                _ => None,
+            })
+            .collect();
+        if lines.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "Earlier in this conversation:\n\n{}\n\nNow:\n\n",
+                lines.join("\n\n")
+            )
+        }
+    }
+
+    /// The run a message follows up: a message with no tags, in a thread with a run, written by
+    /// that run's asker, after it. The newest such run is the one followed.
+    #[must_use]
+    pub fn followed(&self, event: &Event) -> Option<RunView> {
+        let (Body::Message(message), Some(thread)) = (&event.body, event.thread) else {
+            return None;
+        };
+        if !message.tags.is_empty() {
+            return None;
+        }
+        let events = self.events.get(&event.chat)?;
+        let (runs, _) = self.runs(&event.chat);
+        runs.into_iter()
+            .flat_map(|(request, runs)| runs.into_iter().map(move |run| (request, run)))
+            .filter(|(request, run)| {
+                run.thread == thread
+                    && run.id < event.id
+                    && events
+                        .get(request)
+                        .is_some_and(|asked| asked.author == event.author)
+            })
+            .max_by_key(|(_, run)| run.id)
+            .map(|(_, run)| run)
+    }
+
+    /// The `@` mentions in a message that name nobody who has joined, or a place they do not
+    /// advertise, each as a line to show under it.
+    fn unknown(&self, message: &Message) -> Vec<String> {
+        let mut lines = Vec::new();
+        for word in message.text.split_whitespace() {
+            let Some(mention) = word.strip_prefix('@') else {
+                continue;
+            };
+            let mention = mention.trim_end_matches(|c: char| !c.is_ascii_alphanumeric());
+            let (name, place) = mention
+                .split_once('/')
+                .map_or((mention, None), |(name, place)| (name, Some(place)));
+            if name.is_empty()
+                || message.tags.iter().any(|tag| {
+                    tag.person.as_str() == name
+                        && place.is_none_or(|place| tag.place.as_str() == place)
+                })
+            {
+                continue;
+            }
+            let line = match (
+                self.people
+                    .iter()
+                    .find(|person| person.name.as_str() == name),
+                place,
+            ) {
+                (None, _) => format!("nobody named {name} has joined"),
+                (Some(_), Some(place)) => format!("{name} does not share {place}"),
+                (Some(_), None) => continue,
+            };
+            if !lines.contains(&line) {
+                lines.push(line);
+            }
+        }
+        lines
+    }
+
     /// One chat's top level, or one thread of it.
     #[must_use]
     pub fn view(&self, chat: &ChatId, thread: Option<EventId>) -> ChatView {
@@ -417,6 +513,11 @@ impl Chats {
             .into_iter()
             .map(|(event, message)| {
                 let answered_by = answered.get(&event.id).cloned().unwrap_or_default();
+                let follows = if answered_by.is_empty() {
+                    self.followed(event)
+                } else {
+                    None
+                };
                 Item {
                     id: event.id,
                     author: event.author.clone(),
@@ -424,6 +525,8 @@ impl Chats {
                     text: message.text.clone(),
                     tags: message.tags.clone(),
                     replies: replies.get(&event.id).copied().unwrap_or_default(),
+                    follows,
+                    unknown: self.unknown(message),
                     runs: runs.remove(&event.id).unwrap_or_default(),
                     waiting: message
                         .tags

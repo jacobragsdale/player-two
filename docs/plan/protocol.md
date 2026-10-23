@@ -53,8 +53,8 @@ Every event has the same envelope: `{ id, chat, thread, author, kind, body, ts }
 | `kind` | `body` | Who may post it |
 |---|---|---|
 | `message` | `{ text, tags: [{ person, place }] }`. `text` is at most 64,000 characters. | Anyone in the chat. |
-| `run.accepted` | `{ request, place, runs_in, mode, steps_by, keep_going }`. `request` is the message being answered. `steps_by` is `owner` or `asker`. | The owner of the tagged place. |
-| `run.declined` | `{ request }` | The owner of the tagged place. |
+| `run.accepted` | `{ request, place, runs_in, mode, steps_by, keep_going }`. `request` is the message being answered. `steps_by` is `owner` or `asker`. | The owner of the tagged place, or for a follow-up, the owner of the run it follows. |
+| `run.declined` | `{ request }` | The owner of the tagged place, or for a follow-up, the owner of the run it follows. |
 | `run.withdrawn` | `{ request }` | Whoever wrote the request. |
 | `run.activity` | `{ run, items: [{ id, verb, object, outcome?, output? }] }`. `run` is the `id` of its `run.accepted`. | The owner. |
 | `run.prompt` | `{ run, prompt, what }`: a step waiting for a yes, in ask mode. | The owner. |

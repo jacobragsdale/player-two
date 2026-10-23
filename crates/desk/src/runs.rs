@@ -1,9 +1,11 @@
 //! Running an agent for a request: the run's record in the chat, its session, what its mode lets
-//! it do, the steps it waits on, and its reports. Each place runs one thing at a time.
+//! it do, the steps it waits on, and its reports. Each place runs one thing at a time. A session
+//! that finished is kept for the asker's follow-ups in the same thread, until the thread has been
+//! quiet for an hour.
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use player_two_core::event::{
     Activity, Body, Ending, Event, EventId, Mode, RunAccepted, RunActivity, RunEnded, RunPrompt,
@@ -22,6 +24,8 @@ use crate::agents;
 const BATCH: Duration = Duration::from_millis(400);
 /// How long a stopped agent has to stop by itself before it is killed.
 const GRACE: Duration = Duration::from_secs(3);
+/// How long a session is kept for follow-ups after its thread goes quiet.
+pub const QUIET: Duration = Duration::from_secs(3600);
 
 /// What a mode makes of a step the agent asks to take.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -111,11 +115,35 @@ struct Waiting {
     by: Vec<PersonName>,
 }
 
+/// A session, with where its reports arrive and the folder it runs in.
+type Parts = (Arc<Session>, mpsc::UnboundedReceiver<Said>, String);
+
+/// A session kept after its run, for the asker's follow-ups in the same thread.
+#[derive(Debug)]
+pub(crate) struct Kept {
+    session: Arc<Session>,
+    said: mpsc::UnboundedReceiver<Said>,
+    folder: String,
+    place: PlaceName,
+    keep_going: bool,
+    last: Instant,
+}
+
 /// The runs on this machine.
 #[derive(Debug, Default)]
 pub(crate) struct Runs {
     pub(crate) active: HashMap<PlaceName, Active>,
     waiting: HashMap<(EventId, String), Waiting>,
+    /// Sessions kept for follow-ups, by the thread they serve.
+    kept: HashMap<EventId, Kept>,
+}
+
+/// Where a run reports: its chat, its thread and its id.
+#[derive(Debug, Clone)]
+struct Report {
+    chat: ChatId,
+    thread: EventId,
+    run: EventId,
 }
 
 impl Desk {
@@ -137,7 +165,8 @@ impl Desk {
     }
 
     /// Starts a run for a request, unless its place is busy. A run that cannot start ends at once,
-    /// saying why, so that the chat sees it.
+    /// saying why, so that the chat sees it. A follow-up in a thread whose session is kept goes
+    /// to that session; otherwise a new one is given the thread so far.
     pub(crate) async fn start_run(&self, order: Order) -> anyhow::Result<()> {
         anyhow::ensure!(self.busy(&order.place).is_none(), "{} is busy", order.place);
         let chat = order.request.chat.clone();
@@ -151,49 +180,52 @@ impl Desk {
             keep_going: order.keep_going,
         });
         let run = self.post(&chat, Some(thread), accepted).await?;
-        let opened = self.open_session(&order).await;
-        let (session, folder, said) = match opened {
-            Ok(opened) => opened,
-            Err(error) => {
-                self.end_run(
-                    &chat,
-                    thread,
-                    run,
-                    Ending::Failed,
-                    Some(format!("{error:#}")),
-                )
-                .await;
-                return Ok(());
-            }
+        let report = Report { chat, thread, run };
+        let kept = self
+            .runs()
+            .kept
+            .remove(&thread)
+            .filter(|kept| kept.place == order.place);
+        let (parts, earlier) = match kept {
+            Some(kept) => ((kept.session, kept.said, kept.folder), String::new()),
+            None => match self.open_session(&order).await {
+                Ok(parts) => {
+                    let earlier = self
+                        .state()
+                        .chats
+                        .as_ref()
+                        .map(|chats| chats.transcript(&report.chat, thread, order.request.id))
+                        .unwrap_or_default();
+                    (parts, earlier)
+                }
+                Err(error) => {
+                    self.end_run(&report, Ending::Failed, Some(format!("{error:#}")))
+                        .await;
+                    return Ok(());
+                }
+            },
         };
-        let session = Arc::new(session);
         self.runs().active.insert(
             order.place.clone(),
             Active {
                 run,
-                session: Arc::clone(&session),
+                session: Arc::clone(&parts.0),
             },
         );
         self.tell(crate::ui::Event::Overview);
         let me = self.me().unwrap_or_else(|| order.asker.clone());
         let text = format!(
-            "{}{}",
-            preamble(&me, &order.asker, &order.runs_in, &folder, order.mode),
+            "{}{earlier}{}",
+            preamble(&me, &order.asker, &order.runs_in, &parts.2, order.mode),
             order.text
         );
         let desk = self.clone();
-        tokio::spawn(async move {
-            desk.drive(order, chat, thread, run, session, said, text)
-                .await
-        });
+        tokio::spawn(async move { desk.drive(order, report, parts, text).await });
         Ok(())
     }
 
     /// Finds the folder and the agent for a run, and opens a session with it there.
-    async fn open_session(
-        &self,
-        order: &Order,
-    ) -> anyhow::Result<(Session, String, mpsc::UnboundedReceiver<Said>)> {
+    async fn open_session(&self, order: &Order) -> anyhow::Result<Parts> {
         let mut found = self.state().agents.clone();
         if found.is_empty() {
             found = self.find_agents().await?;
@@ -220,22 +252,16 @@ impl Desk {
         };
         let (said, heard) = mpsc::unbounded_channel();
         let session = Session::open(agent, &folder, said).await?;
-        Ok((session, folder, heard))
+        Ok((Arc::new(session), heard, folder))
     }
 
-    /// Runs one turn, reporting as it goes, and ends the run.
-    #[allow(
-        clippy::too_many_arguments,
-        reason = "one run's parts, gathered where it starts"
-    )]
+    /// Runs one turn, reporting as it goes, and ends the run. A run that finished keeps its
+    /// session for follow-ups; one that was stopped or failed stops it.
     async fn drive(
         self,
         order: Order,
-        chat: ChatId,
-        thread: EventId,
-        run: EventId,
-        session: Arc<Session>,
-        mut said: mpsc::UnboundedReceiver<Said>,
+        report: Report,
+        (session, mut said, folder): Parts,
         text: String,
     ) {
         let turning = Arc::clone(&session);
@@ -250,9 +276,9 @@ impl Desk {
                         batch.retain(|kept| kept.id != item.id);
                         batch.push(item);
                     }
-                    Said::Asks { what, reach, answer } => self.asked(&order, &chat, thread, run, what, reach, answer).await,
+                    Said::Asks { what, reach, answer } => self.asked(&order, &report, what, reach, answer).await,
                 },
-                _ = tick.tick() => self.report(&chat, thread, run, &mut batch).await,
+                _ = tick.tick() => self.report(&report, &mut batch).await,
             }
         };
         while let Ok(heard) = said.try_recv() {
@@ -261,7 +287,7 @@ impl Desk {
                 batch.push(item);
             }
         }
-        self.report(&chat, thread, run, &mut batch).await;
+        self.report(&report, &mut batch).await;
         let (how, reason) = match ended {
             Ok(Ok(Ended::Answered(answer))) => {
                 let text = if answer.trim().is_empty() {
@@ -269,39 +295,42 @@ impl Desk {
                 } else {
                     answer
                 };
-                if let Err(error) = self
-                    .post(
-                        &chat,
-                        Some(thread),
-                        Body::RunResult(RunResult { run, text }),
-                    )
-                    .await
-                {
+                let result = Body::RunResult(RunResult {
+                    run: report.run,
+                    text,
+                });
+                if let Err(error) = self.post(&report.chat, Some(report.thread), result).await {
                     eprintln!("error: cannot post a run's answer: {error:#}");
                 }
                 (Ending::Done, None)
             }
             Ok(Ok(Ended::Cancelled)) => (Ending::Stopped, None),
-            Ok(Err(_)) if self.was_stopped(run) => (Ending::Stopped, None),
+            Ok(Err(_)) if self.was_stopped(report.run) => (Ending::Stopped, None),
             Ok(Err(error)) => (Ending::Failed, Some(format!("{error:#}"))),
             Err(error) => (Ending::Failed, Some(error.to_string())),
         };
-        let _ = session.stop().await;
-        self.forget_run(run);
-        self.end_run(&chat, thread, run, how, reason).await;
+        self.forget_run(report.run);
+        if how == Ending::Done {
+            let kept = Kept {
+                session,
+                said,
+                folder,
+                place: order.place.clone(),
+                keep_going: order.keep_going,
+                last: Instant::now(),
+            };
+            self.runs().kept.insert(report.thread, kept);
+        } else {
+            let _ = session.stop().await;
+        }
+        self.end_run(&report, how, reason).await;
     }
 
     /// Decides a step by the run's mode, or asks a person and leaves the answer to come.
-    #[allow(
-        clippy::too_many_arguments,
-        reason = "a step and the run it belongs to"
-    )]
     async fn asked(
         &self,
         order: &Order,
-        chat: &ChatId,
-        thread: EventId,
-        run: EventId,
+        report: &Report,
         what: String,
         reach: Reach,
         answer: oneshot::Sender<bool>,
@@ -322,15 +351,15 @@ impl Desk {
                 };
                 self.runs()
                     .waiting
-                    .insert((run, prompt.clone()), Waiting { answer, by });
+                    .insert((report.run, prompt.clone()), Waiting { answer, by });
                 let body = Body::RunPrompt(RunPrompt {
-                    run,
+                    run: report.run,
                     prompt: prompt.clone(),
                     what,
                 });
-                if let Err(error) = self.post(chat, Some(thread), body).await {
+                if let Err(error) = self.post(&report.chat, Some(report.thread), body).await {
                     eprintln!("error: cannot post a step to answer: {error:#}");
-                    if let Some(waiting) = self.runs().waiting.remove(&(run, prompt)) {
+                    if let Some(waiting) = self.runs().waiting.remove(&(report.run, prompt)) {
                         let _ = waiting.answer.send(false);
                     }
                 }
@@ -356,45 +385,27 @@ impl Desk {
     }
 
     /// Posts what the agent did since the last report.
-    async fn report(
-        &self,
-        chat: &ChatId,
-        thread: EventId,
-        run: EventId,
-        batch: &mut Vec<Activity>,
-    ) {
+    async fn report(&self, report: &Report, batch: &mut Vec<Activity>) {
         if batch.is_empty() {
             return;
         }
         let items = std::mem::take(batch);
-        if let Err(error) = self
-            .post(
-                chat,
-                Some(thread),
-                Body::RunActivity(RunActivity { run, items }),
-            )
-            .await
-        {
+        let body = Body::RunActivity(RunActivity {
+            run: report.run,
+            items,
+        });
+        if let Err(error) = self.post(&report.chat, Some(report.thread), body).await {
             eprintln!("error: cannot post a run's activity: {error:#}");
         }
     }
 
-    async fn end_run(
-        &self,
-        chat: &ChatId,
-        thread: EventId,
-        run: EventId,
-        how: Ending,
-        reason: Option<String>,
-    ) {
-        if let Err(error) = self
-            .post(
-                chat,
-                Some(thread),
-                Body::RunEnded(RunEnded { run, how, reason }),
-            )
-            .await
-        {
+    async fn end_run(&self, report: &Report, how: Ending, reason: Option<String>) {
+        let body = Body::RunEnded(RunEnded {
+            run: report.run,
+            how,
+            reason,
+        });
+        if let Err(error) = self.post(&report.chat, Some(report.thread), body).await {
             eprintln!("error: cannot post how a run ended: {error:#}");
         }
         self.tell(crate::ui::Event::Overview);
@@ -421,7 +432,36 @@ impl Desk {
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     }
 
+    /// Whether a follow-up in `thread` at `place` may run without a click: its session is kept,
+    /// the owner let the asker keep going, and the thread has not been quiet for an hour.
+    pub(crate) fn keeps_going(&self, thread: EventId, place: &PlaceName) -> bool {
+        self.runs().kept.get(&thread).is_some_and(|kept| {
+            &kept.place == place && kept.keep_going && kept.last.elapsed() < QUIET
+        })
+    }
+
+    /// Stops the sessions kept for threads quiet for an hour.
+    pub(crate) async fn forget_quiet(&self) {
+        let quiet: Vec<Kept> = {
+            let mut runs = self.runs();
+            let threads: Vec<EventId> = runs
+                .kept
+                .iter()
+                .filter(|(_, kept)| kept.last.elapsed() >= QUIET)
+                .map(|(thread, _)| *thread)
+                .collect();
+            threads
+                .iter()
+                .filter_map(|thread| runs.kept.remove(thread))
+                .collect()
+        };
+        for kept in quiet {
+            let _ = kept.session.stop().await;
+        }
+    }
+
     /// Stops a run of this machine's: asks the agent to stop, and kills it if it has not soon.
+    /// Stopping ends keeping going in its thread too, since the session goes with it.
     pub(crate) fn stop_run(&self, run: EventId) -> anyhow::Result<()> {
         let session = {
             let runs = self.runs();

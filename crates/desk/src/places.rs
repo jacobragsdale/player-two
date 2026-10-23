@@ -174,6 +174,25 @@ pub async fn exists(path: &str, runs_in: &RunsIn) -> bool {
     }
 }
 
+/// Whether a checkout has changes not committed, as `git status` sees it. A checkout git cannot
+/// read counts as clean.
+pub async fn dirty(path: &str, runs_in: &RunsIn) -> bool {
+    let command = match runs_in {
+        RunsIn::Windows => {
+            let mut git = system::command("git");
+            git.args(["-C", path, "status", "--porcelain"]);
+            git
+        }
+        RunsIn::Wsl(distro) => system::in_wsl(
+            distro,
+            &format!("git -C {} status --porcelain", quoted(path)),
+        ),
+    };
+    system::output(command)
+        .await
+        .is_some_and(|changes| !changes.trim().is_empty())
+}
+
 /// Checkouts worth offering: the git folders directly under `dev` in the home folder, and under
 /// `~/dev` in each WSL distro, that are not shared already.
 pub async fn suggestions(settings: &Settings, distros: &[String]) -> Vec<Folder> {
