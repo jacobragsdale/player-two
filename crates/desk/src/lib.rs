@@ -92,6 +92,8 @@ struct Inner {
     prompts: std::sync::atomic::AtomicU64,
     /// The folder dialog, once the app shell has given one.
     picker: Mutex<Option<Picker>>,
+    /// Held while the desk looks for agents and folders, so that looks take turns.
+    looking: tokio::sync::Mutex<()>,
 }
 
 impl std::fmt::Debug for Inner {
@@ -134,6 +136,7 @@ impl Desk {
             stopped: Mutex::new(std::collections::HashMap::new()),
             prompts: std::sync::atomic::AtomicU64::new(1),
             picker: Mutex::new(None),
+            looking: tokio::sync::Mutex::new(()),
         };
         (
             Self {

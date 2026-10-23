@@ -41,6 +41,8 @@ impl Desk {
 
     /// Looks again at `systems`, keeps what it found, and advertises the places that can run.
     pub(crate) async fn look(&self, systems: Where) -> anyhow::Result<Looked> {
+        // Two looks at once would each write `found.json`, and one would lose.
+        let _turn = self.inner.looking.lock().await;
         let settings = self.settings()?;
         let mut looked = self.looked();
         if matches!(
