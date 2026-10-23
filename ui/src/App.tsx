@@ -6,6 +6,7 @@ import type { JSX } from "react";
 import { ask } from "./deskClient.ts";
 import { FirstRun } from "./FirstRun.tsx";
 import { useDeskEvents } from "./hooks.ts";
+import { Joined } from "./Joined.tsx";
 
 type Setup = { readonly joined: string | null; readonly suggested: string | null } | null;
 
@@ -37,5 +38,5 @@ export function App(): JSX.Element {
   if (setup.joined === null) {
     return <FirstRun suggested={setup.suggested} onJoined={check} />;
   }
-  return <main className="flex h-full items-center justify-center">Joined as {setup.joined}</main>;
+  return <Joined />;
 }

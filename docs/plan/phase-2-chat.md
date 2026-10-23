@@ -12,7 +12,7 @@ The window becomes a chat people can use every day, without agents yet.
   - It uses `reqwest` and reads the stream, reconnecting with backoff and `Last-Event-ID`.
   - The desk holds the chat state (chats, unread counts, threads, presence) and sends changes to the window as `Event`s.
 - [x] **P2-3 The first-run page.** One field, for the join code, and the name prefilled. It must read clearly to someone who is not technical.
-- [ ] **P2-4 The chat.**
+- [x] **P2-4 The chat.**
   - The chat list, the open chat, threads and the message box.
   - Lift v0.7.1's `Sidebar`, `Thread`, `Message` and `Composer` (`src/window/renderer/`), cut down to what v1 has. Leave out reactions, edits, deletes, search and grants.
 - [ ] **P2-5 Safe rendering.**
