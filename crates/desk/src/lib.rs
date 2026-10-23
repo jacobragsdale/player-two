@@ -279,6 +279,12 @@ impl Desk {
                 }
                 Ok(Response::Done)
             }
+            Request::RenameFolder { name, to } => {
+                let mut settings = self.settings()?;
+                settings.rename(&name, &to)?;
+                self.save_settings(&settings).await?;
+                Ok(Response::Done)
+            }
             Request::RemoveFolder { name } => {
                 let mut settings = self.settings()?;
                 settings.folders.retain(|folder| folder.name != name);
@@ -413,16 +419,12 @@ impl Desk {
             "{path} is shared already"
         );
         let remote = places::remote_of(&path, &runs_in).await;
-        let taken: Vec<_> = settings
-            .folders
-            .iter()
-            .map(|folder| folder.name.clone())
-            .collect();
-        let name = places::name_for(&path, remote.as_deref(), &taken)?;
+        let name = places::name_for(&path, remote.as_deref(), &settings.taken())?;
         settings.folders.push(Folder {
             name,
             path,
             runs_in,
+            former: Vec::new(),
         });
         self.save_settings(&settings).await
     }
@@ -466,9 +468,7 @@ impl Desk {
             });
         }
         let folder = settings
-            .folders
-            .iter()
-            .find(|folder| &folder.name == place)
+            .folder(place)
             .context("that place is not shared any more")?;
         let dirty = places::dirty(&folder.path, &folder.runs_in).await;
         Ok(Response::Approval {
@@ -666,9 +666,7 @@ impl Desk {
                 settings.machine_runs_in.clone()
             } else {
                 settings
-                    .folders
-                    .iter()
-                    .find(|folder| folder.name == tag.place)
+                    .folder(&tag.place)
                     .map_or(RunsIn::Windows, |folder| folder.runs_in.clone())
             };
             self.start_run(runs::Order {

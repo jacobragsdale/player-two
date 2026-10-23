@@ -161,7 +161,15 @@ impl Desk {
 
     /// Whether a place has a run going.
     pub(crate) fn busy(&self, place: &PlaceName) -> Option<EventId> {
-        self.runs().active.get(place).map(|active| active.run)
+        let place = self.current(place);
+        self.runs().active.get(&place).map(|active| active.run)
+    }
+
+    /// The name a place goes by now, so that a request to a renamed folder's former name is the
+    /// same place as one to its new name.
+    fn current(&self, place: &PlaceName) -> PlaceName {
+        self.settings()
+            .map_or_else(|_| place.clone(), |settings| settings.current(place))
     }
 
     /// Starts a run for a request, unless its place is busy. A run that cannot start ends at once,
@@ -181,11 +189,12 @@ impl Desk {
         });
         let run = self.post(&chat, Some(thread), accepted).await?;
         let report = Report { chat, thread, run };
+        let place = self.current(&order.place);
         let kept = self
             .runs()
             .kept
             .remove(&thread)
-            .filter(|kept| kept.place == order.place);
+            .filter(|kept| kept.place == place);
         let (parts, earlier) = match kept {
             Some(kept) => ((kept.session, kept.said, kept.folder), String::new()),
             None => match self.open_session(&order).await {
@@ -206,7 +215,7 @@ impl Desk {
             },
         };
         self.runs().active.insert(
-            order.place.clone(),
+            place.clone(),
             Active {
                 run,
                 session: Arc::clone(&parts.0),
@@ -244,9 +253,7 @@ impl Desk {
         } else {
             let settings = self.settings()?;
             let shared = settings
-                .folders
-                .iter()
-                .find(|folder| folder.name == order.place)
+                .folder(&order.place)
                 .ok_or_else(|| anyhow::anyhow!("{} is not shared any more", order.place))?;
             shared.path.clone()
         };
@@ -315,7 +322,7 @@ impl Desk {
                 session,
                 said,
                 folder,
-                place: order.place.clone(),
+                place: self.current(&order.place),
                 keep_going: order.keep_going,
                 last: Instant::now(),
             };
@@ -435,8 +442,9 @@ impl Desk {
     /// Whether a follow-up in `thread` at `place` may run without a click: its session is kept,
     /// the owner let the asker keep going, and the thread has not been quiet for an hour.
     pub(crate) fn keeps_going(&self, thread: EventId, place: &PlaceName) -> bool {
+        let place = self.current(place);
         self.runs().kept.get(&thread).is_some_and(|kept| {
-            &kept.place == place && kept.keep_going && kept.last.elapsed() < QUIET
+            kept.place == place && kept.keep_going && kept.last.elapsed() < QUIET
         })
     }
 

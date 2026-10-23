@@ -127,6 +127,11 @@ export type Folder = {
 	path: string,
 	/**  Which system it is on. */
 	runs_in: RunsIn,
+	/**
+	 *  The names it had before it was renamed, which still reach it from older requests and
+	 *  threads. No other folder is given one.
+	 */
+	former?: PlaceName[],
 };
 
 /**  One message as the window draws it. */
@@ -316,6 +321,12 @@ name: string } |
  *  `\\wsl.localhost` is shared in its distro.
  */
 { type: "pick_folder" } | 
+/**  Gives a shared folder a new name. Its old one still reaches it from older requests. */
+{ type: "rename_folder"; 
+/**  Its name now. */
+name: PlaceName; 
+/**  The name it is to have. */
+to: string } | 
 /**  Stops sharing a folder. */
 { type: "remove_folder"; 
 /**  Its name. */

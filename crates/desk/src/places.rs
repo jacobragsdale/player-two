@@ -57,9 +57,72 @@ pub struct Folder {
     pub path: String,
     /// Which system it is on.
     pub runs_in: RunsIn,
+    /// The names it had before it was renamed, which still reach it from older requests and
+    /// threads. No other folder is given one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub former: Vec<PlaceName>,
 }
 
 impl Settings {
+    /// The shared folder a place names, by its name or a former one.
+    #[must_use]
+    pub fn folder(&self, place: &PlaceName) -> Option<&Folder> {
+        self.folders
+            .iter()
+            .find(|folder| &folder.name == place)
+            .or_else(|| {
+                self.folders
+                    .iter()
+                    .find(|folder| folder.former.contains(place))
+            })
+    }
+
+    /// The name a place goes by now: a renamed folder's new name, and any other place's own.
+    #[must_use]
+    pub fn current(&self, place: &PlaceName) -> PlaceName {
+        self.folder(place)
+            .map_or_else(|| place.clone(), |folder| folder.name.clone())
+    }
+
+    /// Every name a folder has or had, which a new folder cannot take.
+    #[must_use]
+    pub fn taken(&self) -> Vec<PlaceName> {
+        self.folders
+            .iter()
+            .flat_map(|folder| std::iter::once(&folder.name).chain(&folder.former))
+            .cloned()
+            .collect()
+    }
+
+    /// Renames the folder now called `name` to `to`. Its old name is kept as a former one; a name
+    /// it had before may be taken back.
+    pub fn rename(&mut self, name: &PlaceName, to: &str) -> anyhow::Result<()> {
+        let to = PlaceName::new(to.trim()).map_err(|_| {
+            anyhow::anyhow!(
+                "a name is lowercase letters, digits, ., _ or -, up to 64, starting with a letter or digit"
+            )
+        })?;
+        anyhow::ensure!(!to.is_machine(), "machine is the name of your computer");
+        let taken_elsewhere = self
+            .folders
+            .iter()
+            .filter(|folder| &folder.name != name)
+            .any(|folder| folder.name == to || folder.former.contains(&to));
+        anyhow::ensure!(!taken_elsewhere, "another folder is or was called {to}");
+        let folder = self
+            .folders
+            .iter_mut()
+            .find(|folder| &folder.name == name)
+            .ok_or_else(|| anyhow::anyhow!("{name} is not shared"))?;
+        if folder.name == to {
+            return Ok(());
+        }
+        folder.former.retain(|former| former != &to);
+        folder.former.push(folder.name.clone());
+        folder.name = to;
+        Ok(())
+    }
+
     /// What the hub lists of the person's places: the machine, and each folder by name.
     #[must_use]
     pub fn advertised(&self) -> Vec<PlaceInfo> {
@@ -223,7 +286,7 @@ mod tests {
     use player_two_core::event::RunsIn;
     use player_two_core::names::PlaceName;
 
-    use super::{Settings, located, name_for, name_from_remote, quoted};
+    use super::{Folder, Settings, located, name_for, name_from_remote, quoted};
 
     #[test]
     fn a_checkout_is_named_by_its_remote() {
@@ -271,6 +334,58 @@ mod tests {
         let advertised = settings.advertised();
         assert_eq!(advertised.len(), 1);
         assert!(advertised[0].name.is_machine());
+    }
+
+    #[test]
+    fn a_renamed_folder_answers_to_its_former_names() {
+        let place = |name: &str| PlaceName::new(name).expect("a name");
+        let folder = |name: &str| Folder {
+            name: place(name),
+            path: format!("C:\\dev\\{name}"),
+            runs_in: RunsIn::Windows,
+            former: Vec::new(),
+        };
+        let mut settings = Settings {
+            folders: vec![folder("uploader"), folder("uploader-2")],
+            ..Settings::default()
+        };
+        settings
+            .rename(&place("uploader-2"), " uploader-old ")
+            .expect("renamed");
+        assert_eq!(settings.folders[1].name.as_str(), "uploader-old");
+        assert_eq!(settings.folders[1].former, [place("uploader-2")]);
+        assert_eq!(
+            settings
+                .folder(&place("uploader-2"))
+                .map(|found| &found.path),
+            Some(&"C:\\dev\\uploader-2".to_owned())
+        );
+        assert_eq!(
+            settings.current(&place("uploader-2")),
+            place("uploader-old")
+        );
+        assert_eq!(
+            settings.current(&PlaceName::machine()),
+            PlaceName::machine()
+        );
+        for refused in ["uploader-2", "uploader-old", "machine", "Not A Name"] {
+            assert!(
+                settings.rename(&place("uploader"), refused).is_err(),
+                "{refused} is refused"
+            );
+        }
+        settings
+            .rename(&place("uploader-old"), "uploader-2")
+            .expect("a former name is taken back");
+        assert_eq!(settings.folders[1].former, [place("uploader-old")]);
+        assert_eq!(
+            settings.taken(),
+            [
+                place("uploader"),
+                place("uploader-2"),
+                place("uploader-old")
+            ]
+        );
     }
 
     #[test]

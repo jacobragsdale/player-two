@@ -10,7 +10,7 @@ Shared folders are picked with the folder dialog, setting up an agent is part of
   - The text box, the "which system" dropdown, the scan of `dev` folders and `Request::Suggestions` go.
   - Any folder can be shared. A git checkout is named from its `origin`, and any other folder by its own name. The window says "shared folder", not "checkout".
   - The README says how.
-- [ ] **P6-2 Renaming a place.**
+- [x] **P6-2 Renaming a place.**
   - Settings lets the owner rename a shared folder. The desk checks the name and advertises the places again.
   - The desk keeps each folder's former names in `settings.json`, so that a waiting request or a follow-up addressed to an old name still finds it. Tags read only current names, and no other folder is given a former name.
 - [ ] **P6-3 Advertising only what can run.**

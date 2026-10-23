@@ -1,9 +1,10 @@
 /** The settings page: where the person's machine runs requests, and the folders they share, each picked with the folder dialog. WSL is mentioned only to someone who has it. */
 
 import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
+import type { JSX, SyntheticEvent } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 import type { AgentInfo, AgentKind, Folder, PlacesView, RunsIn } from "./desk.ts";
 import { ask, problem } from "./deskClient.ts";
@@ -125,11 +126,55 @@ function NoAgent({ onLook }: { readonly onLook: () => void }): JSX.Element {
   );
 }
 
-/** One shared folder, with the button that stops sharing it. */
-function FolderRow({ folder, wsl, onStop }: { readonly folder: Folder; readonly wsl: boolean; readonly onStop: () => void }): JSX.Element {
+/** One shared folder: its name, which can be changed, where it is, and the button that stops sharing it. */
+function FolderRow({ folder, wsl, onRename, onStop }: { readonly folder: Folder; readonly wsl: boolean; readonly onRename: (to: string) => void; readonly onStop: () => void }): JSX.Element {
+  const [editing, setEditing] = useState<string | null>(null);
+  const save = (event: SyntheticEvent<HTMLFormElement>): void => {
+    event.preventDefault();
+    if (editing !== null && editing.trim() !== folder.name) {
+      onRename(editing);
+    }
+    setEditing(null);
+  };
   return (
     <li className="flex items-center gap-2 py-1">
-      <span className="font-medium">{folder.name}</span>
+      {editing === null ? (
+        <>
+          <span className="font-medium">{folder.name}</span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            className="text-muted-foreground"
+            aria-label={`Rename ${folder.name}`}
+            onClick={() => {
+              setEditing(folder.name);
+            }}
+          >
+            Rename
+          </Button>
+        </>
+      ) : (
+        <form className="flex items-center gap-1" onSubmit={save}>
+          <Input
+            className="h-7 w-44"
+            aria-label={`New name for ${folder.name}`}
+            value={editing}
+            autoFocus
+            onChange={(event) => {
+              setEditing(event.target.value);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                setEditing(null);
+              }
+            }}
+          />
+          <Button type="submit" size="xs">
+            Save
+          </Button>
+        </form>
+      )}
       <span className="truncate text-xs text-muted-foreground" title={folder.path}>
         {folder.path}
         {wsl ? ` · ${where(folder.runs_in)}` : ""}
@@ -238,6 +283,9 @@ export function Settings({ me, onBack }: { readonly me: string; readonly onBack:
             key={folder.name}
             folder={folder}
             wsl={wsl}
+            onRename={(to) => {
+              change({ type: "rename_folder", name: folder.name, to });
+            }}
             onStop={() => {
               change({ type: "remove_folder", name: folder.name });
             }}

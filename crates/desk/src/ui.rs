@@ -98,6 +98,13 @@ pub enum Request {
     /// Opens the folder dialog, and shares the folder picked. A folder picked through
     /// `\\wsl.localhost` is shared in its distro.
     PickFolder,
+    /// Gives a shared folder a new name. Its old one still reaches it from older requests.
+    RenameFolder {
+        /// Its name now.
+        name: PlaceName,
+        /// The name it is to have.
+        to: String,
+    },
     /// Stops sharing a folder.
     RemoveFolder {
         /// Its name.

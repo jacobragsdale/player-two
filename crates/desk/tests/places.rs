@@ -84,6 +84,48 @@ async fn a_picked_checkout_is_named_by_its_remote_and_advertised() {
         .collect();
     assert_eq!(names, ["machine", "uploader"]);
 
+    // Renamed, it is advertised by its new name, and its old one still reaches it.
+    let uploader = places.folders[0].name.clone();
+    let refused = alice
+        .handle(Request::RenameFolder {
+            name: uploader.clone(),
+            to: "machine".to_owned(),
+        })
+        .await;
+    assert!(refused.is_err(), "machine is not a folder's name");
+    assert_eq!(
+        alice
+            .handle(Request::RenameFolder {
+                name: uploader.clone(),
+                to: "up".to_owned(),
+            })
+            .await,
+        Ok(Response::Done)
+    );
+    until(&bob, "alice's renamed folder", |overview| {
+        overview.people.iter().any(|person| {
+            person.name.as_str() == "alice"
+                && person
+                    .places
+                    .iter()
+                    .any(|place| place.name.as_str() == "up")
+        })
+    })
+    .await;
+    let Ok(Response::Approval { choices, .. }) = alice
+        .handle(Request::Approval {
+            place: uploader.clone(),
+        })
+        .await
+    else {
+        panic!("the old name still finds the folder");
+    };
+    assert_eq!(choices, [RunsIn::Windows]);
+
+    let Ok(Response::Places(places)) = alice.handle(Request::Places).await else {
+        panic!("the places are listed");
+    };
+    assert_eq!(places.folders[0].former, [uploader]);
     let name = places.folders[0].name.clone();
     assert_eq!(
         alice.handle(Request::RemoveFolder { name }).await,
