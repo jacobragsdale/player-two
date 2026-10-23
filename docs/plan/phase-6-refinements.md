@@ -57,3 +57,4 @@ On a work machine, someone with only the Cursor editor joins, sets up Cursor fro
 
 ## Notes
 - **P6-11: your own follow-up runs at once.** The plan took it that a follow-up in the thread of your own run already ran your agent, so the mode switch belonged there. It did not: it showed you an approval card for your own request. It now runs at once at your mode, as your own tag does, and waits as before when the place is busy.
+- **P6-3: the first start looks everywhere.** A desk with no `found.json` yet looks in WSL too, once, so that someone whose only agent is in a distro is advertised before they open Settings. Every later start looks on Windows only. A distro that cannot be asked keeps what was found in it before, rather than unsharing its places.
