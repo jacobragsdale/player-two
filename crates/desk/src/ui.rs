@@ -10,6 +10,7 @@ use player_two_core::names::{ChatId, PersonName, PlaceName};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
+use crate::agents::AgentKind;
 use crate::places::Folder;
 
 /// Something the window asks of the desk.
@@ -183,8 +184,19 @@ pub struct PlacesView {
     pub machine_runs_in: RunsIn,
     /// The checkouts shared.
     pub folders: Vec<Folder>,
-    /// The WSL distros installed, none without WSL.
+    /// The WSL distros with an agent in them; none without WSL, or with no agent in it.
     pub distros: Vec<String>,
+    /// The agents found, and where.
+    pub agents: Vec<AgentInfo>,
+}
+
+/// One agent found.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Type)]
+pub struct AgentInfo {
+    /// Which.
+    pub kind: AgentKind,
+    /// Where.
+    pub runs_in: RunsIn,
 }
 
 /// The chat list, the people and how the connection stands.

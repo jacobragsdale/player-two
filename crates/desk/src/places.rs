@@ -23,6 +23,10 @@ pub struct Settings {
     /// The checkouts shared, by name.
     #[serde(default)]
     pub folders: Vec<Folder>,
+    /// An agent of the person's own choosing, run on this system in place of any found: a
+    /// program and its arguments, speaking ACP.
+    #[serde(default)]
+    pub custom_agent: Option<Vec<String>>,
 }
 
 impl Default for Settings {
@@ -31,6 +35,7 @@ impl Default for Settings {
             default_mode: ask(),
             machine_runs_in: windows(),
             folders: Vec::new(),
+            custom_agent: None,
         }
     }
 }

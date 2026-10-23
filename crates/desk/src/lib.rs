@@ -4,6 +4,7 @@
 //! from the receiver [`Desk::new`] gives back. [`Desk::run`] keeps the desk connected to the hub
 //! for as long as the app runs.
 
+pub mod agents;
 pub mod chats;
 pub mod files;
 pub mod hub;
@@ -22,11 +23,12 @@ use files::{Files, Identity};
 use hub::{Hub, Incoming, NotJoined};
 use places::{Folder, Settings};
 use player_two_core::api::NewEvent;
+use player_two_core::event::RunsIn;
 use player_two_core::event::{Body, Event, EventId, Message};
 use player_two_core::join_code::JoinCode;
 use player_two_core::names::{ChannelName, ChatId, PersonName};
 use tokio::sync::{Notify, mpsc};
-use ui::{Connection, Overview, PlacesView, Request, Response};
+use ui::{AgentInfo, Connection, Overview, PlacesView, Request, Response};
 
 /// How many events one page from the hub holds.
 const PAGE: u32 = 100;
@@ -73,6 +75,8 @@ struct Inner {
 #[derive(Debug)]
 struct State {
     connection: Connection,
+    /// The agents found when last looked for.
+    agents: Vec<agents::Found>,
     hub: Option<Hub>,
     chats: Option<Chats>,
 }
@@ -88,6 +92,7 @@ impl Desk {
             events,
             state: Mutex::new(State {
                 connection: Connection::Connecting,
+                agents: Vec::new(),
                 hub: None,
                 chats: None,
             }),
@@ -173,11 +178,30 @@ impl Desk {
                 Ok(Response::Done)
             }
             Request::Update => anyhow::bail!("updates are installed by the app, not the desk"),
-            Request::Places => Ok(Response::Places(PlacesView {
-                machine_runs_in: self.settings()?.machine_runs_in,
-                folders: self.settings()?.folders,
-                distros: system::distros().await,
-            })),
+            Request::Places => {
+                let settings = self.settings()?;
+                let found = self.find_agents().await?;
+                let mut distros: Vec<String> = found
+                    .iter()
+                    .filter_map(|agent| match &agent.runs_in {
+                        RunsIn::Wsl(distro) => Some(distro.clone()),
+                        RunsIn::Windows => None,
+                    })
+                    .collect();
+                distros.dedup();
+                Ok(Response::Places(PlacesView {
+                    machine_runs_in: settings.machine_runs_in,
+                    folders: settings.folders,
+                    distros,
+                    agents: found
+                        .iter()
+                        .map(|agent| AgentInfo {
+                            kind: agent.kind,
+                            runs_in: agent.runs_in.clone(),
+                        })
+                        .collect(),
+                }))
+            }
             Request::Suggestions => {
                 let settings = self.settings()?;
                 let folders = places::suggestions(&settings, &system::distros().await).await;
@@ -206,6 +230,14 @@ impl Desk {
                 Ok(Response::Done)
             }
         }
+    }
+
+    /// Looks for the agents installed, and keeps what it found for the runs to come.
+    async fn find_agents(&self) -> anyhow::Result<Vec<agents::Found>> {
+        let custom = self.settings()?.custom_agent;
+        let found = agents::everywhere(custom.as_deref()).await;
+        self.state().agents.clone_from(&found);
+        Ok(found)
     }
 
     /// The person's settings, or the defaults until they change one.
