@@ -23,9 +23,10 @@ Nothing runs on a machine unless its owner said so, at a mode they chose, where 
 - Presence, unread counts, notifications, a tray icon, and starting at login.
 
 **Agents**
-- `@bob` is Bob's machine. `@bob/repo` is one of the checkouts he chose to share.
+- `@bob` is Bob's machine. `@bob/name` is one of the folders he chose to share, picked with the Windows folder dialog.
 - Agents speak ACP. Cursor (`agent acp`) comes first. Copilot (`copilot --acp --stdio`) and Claude Code (through its ACP adapter) are alternatives.
-- The desk finds agents installed on Windows and in each WSL distro. Only people who have WSL with an agent in it ever see WSL mentioned.
+- Setting up an agent is one step after joining. Cursor installs in one click, Copilot and Claude Code have steps to copy, and signing in is a button.
+- The desk finds agents installed on Windows and in each WSL distro. Only people who have a WSL distro, not counting Docker Desktop's, ever see WSL mentioned.
 - A run has a mode: **read-only**, **ask** (each edit or command waits for a yes) or **full**.
 
 **Runs**
@@ -36,9 +37,11 @@ Nothing runs on a machine unless its owner said so, at a mode they chose, where 
 
   The card also warns that everything the agent reads or prints is shown in the chat. In ask mode you can let the asker approve the steps.
 - A request is a thread with one agent session. Each follow-up needs your click, unless you let the asker keep going. That lasts until you press Stop or the thread has been quiet for an hour.
+- The asker can press Stop too.
 - Each place runs one thing at a time.
 - Nothing runs elevated. UAC and `sudo` prompts stay yours to answer.
-- Edit requests run in your actual checkout. The card warns when it has uncommitted changes.
+- Edit requests run in your actual folder. For a git checkout, the card warns when it has uncommitted changes.
+- Passwords in URLs, and `password=`, `token=` and `Authorization:` values, are masked before a run's activity reaches the chat.
 
 **Hub**
 - One container and one SQLite file on NFS. Messages and runs are kept for 30 days, with a nightly backup.
@@ -62,7 +65,7 @@ Nothing runs on a machine unless its owner said so, at a mode they chose, where 
 | Trust | The hub is trusted. Everyone has a personal token from joining. No signatures. | High-trust internal network. The owner's click is the guardrail, not cryptography. |
 | Agents | ACP only, through the `agent-client-protocol` crate. | Cursor, Copilot and Claude Code all speak it. |
 | Windows and WSL | The desk runs on Windows and starts WSL agents with `wsl.exe -d <distro> --cd <path>`. | Machine help needs a Windows process. Devs in WSL keep their repos there. |
-| Shared repos | An explicit list in the app, with suggestions from scanning `~/dev`. | Nothing is shared unless its owner said so. |
+| Shared folders | An explicit list in the app, each folder picked with the Windows folder dialog. Nothing is scanned. Only places that can run are advertised. | Nothing is shared unless its owner said so, and nobody's folders follow one layout. |
 | Versions | The hub and the app share one version number. An app that finds a different version on the hub updates first. | One team and one hub, so no compatibility matrix. |
 | Releases | An Azure DevOps pipeline builds the installer and the hub's image, which carries the installer. | That is where the company's registry and cluster are. |
 | CI | GitHub Actions on `windows-latest` only. | It is the only automated check of the platform everyone uses. |
@@ -78,6 +81,7 @@ Nothing runs on a machine unless its owner said so, at a mode they chose, where 
 | 3. Shipping | The installer, updates from the hub, the image, the release pipeline | [`phase-3-shipping.md`](plan/phase-3-shipping.md) |
 | 4. Your own agent | Places, finding agents, process control, ACP, modes, the activity feed, the setup check | [`phase-4-own-agent.md`](plan/phase-4-own-agent.md) |
 | 5. Asking others | Approval cards, handing over the steps, follow-ups, the full help-with-my-machine flow | [`phase-5-asking-others.md`](plan/phase-5-asking-others.md) |
+| 6. Refinements | The folder dialog, setting up an agent, honest tags, notifications for what waits on you, small fixes | [`phase-6-refinements.md`](plan/phase-6-refinements.md) |
 
 ## Not doing
 
@@ -95,7 +99,9 @@ Nothing runs on a machine unless its owner said so, at a mode they chose, where 
 Raised but neither accepted nor declined. Do not build these without asking:
 
 - Deployed agents: a headless `player-two-desk` binary on a server, over the same desk crate.
-- Hiding secrets, such as proxy passwords and tokens, in a run's activity.
+- Hiding secrets in a run's activity beyond the masking in phase 6.
+- A one-line description on each place, shown in the `@` list.
+- A chat with yourself, for your own runs.
 - Search across chats.
 - An end-to-end test that drives the window.
 - Nightly rustfmt, for the style guide's import grouping.

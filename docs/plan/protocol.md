@@ -9,7 +9,8 @@ The phase files point here. When code and this page disagree, fix whichever is w
 - **Direct chat:** the two people's names in sorted order, joined by `+`, as in `alice+bob`.
 - **Place:** where an agent can run for someone.
   - `machine` is their machine.
-  - A repo name, `[a-z0-9._-]{1,64}`, is one of their shared checkouts. The name defaults to the last part of the checkout's `origin`, lowercased.
+  - A folder name, `[a-z0-9._-]{1,64}`, is one of their shared folders. It defaults to the last part of a git checkout's `origin`, or else the folder's own name, lowercased. The owner can rename it.
+  - A desk advertises `machine` when it found an agent on any system, and a folder when it found one on the folder's system and the folder is there.
 - **Tag:** `@bob` is Bob's `machine` place, and `@bob/uploader` is his `uploader` place.
 - **Where a place runs:** `windows`, or `wsl:<distro>`. This is the owner's business. The approval card shows it to the owner, and the chat sees it only in a run's state line.
 - **Join code:** `p2-` followed by the unpadded base64url of `{"hub": "<hub address>", "token": "<join token>"}`.
@@ -61,6 +62,7 @@ Every event has the same envelope: `{ id, chat, thread, author, kind, body, ts }
 | `run.answer` | `{ run, prompt, allow }` | The owner, or the asker when `steps_by` is `asker`. |
 | `run.result` | `{ run, text }`: the agent's answer, as Markdown. | The owner. |
 | `run.ended` | `{ run, how, reason? }`. `how` is `done`, `stopped` or `failed`. | The owner. |
+| `run.stop` | `{ run }`: the asker wants the run stopped. The owner's desk stops it as if the owner had pressed Stop. | The asker: whoever wrote the request the run answers. |
 
 Rules every desk keeps, as well as the hub:
 
@@ -68,6 +70,7 @@ Rules every desk keeps, as well as the hub:
 - **A follow-up is a `message` in a request's thread,** written by the original asker. It needs a new `run.accepted` from the owner. The owner's desk posts that by itself only while the thread's `keep_going` holds: until a `run.ended` with `how: "stopped"`, or until an hour passes with no event in the thread.
 - **Your own tag** sent from your window produces the same events, with `steps_by: "owner"`.
 - **Each place has at most one active run.** A second request stays waiting, and its card says the place is busy and with whose request.
+- **Credentials are masked.** Before posting `run.activity`, `run.prompt` or `run.result`, the owner's desk replaces with `****` the password in a URL's `user:password@`, and the value after `password=`, `token=` or `Authorization:`, in any case.
 
 ## Modes
 
@@ -97,7 +100,8 @@ The three enums live in `crates/desk/src/ui.rs`. A test writes them to `ui/src/d
 
 The desk keeps its files in the app's data folder, which Tauri names after the app's identifier (`%APPDATA%\io.github.jacobragsdale.player-two\`):
 - `identity.json`: `{ hub, name, token }`.
-- `settings.json`: the default mode, the shared folders and where `machine` runs by default.
+- `settings.json`: the default mode, the shared folders with their former names, the agent chosen for each system, and where `machine` runs by default.
+- `found.json`: the agents and missing folders the desk found when it last looked, which it advertises from.
 
 ## Storage
 

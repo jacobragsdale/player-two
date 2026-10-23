@@ -13,6 +13,7 @@ This folder is the implementation plan. It is written for a coding agent working
 | [`phase-3-shipping.md`](phase-3-shipping.md) | Installer, updates, image, release pipeline. |
 | [`phase-4-own-agent.md`](phase-4-own-agent.md) | Running your own agent. |
 | [`phase-5-asking-others.md`](phase-5-asking-others.md) | Running someone else's request, with their approval. |
+| [`phase-6-refinements.md`](phase-6-refinements.md) | The folder dialog, agent setup, and fixes from a pass over the app. |
 
 ## Order
 
