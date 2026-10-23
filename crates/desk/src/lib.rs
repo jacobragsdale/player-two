@@ -4,6 +4,8 @@
 //! from the receiver [`Desk::new`] gives back. [`Desk::run`] keeps the desk connected to the hub
 //! for as long as the app runs.
 
+pub mod acp;
+pub mod activity;
 pub mod agents;
 pub mod chats;
 pub mod files;

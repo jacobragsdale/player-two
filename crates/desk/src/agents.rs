@@ -72,6 +72,8 @@ pub struct Found {
     pub args: Vec<String>,
     /// The `PATH` to run it with.
     pub path: String,
+    /// The home folder there, where a request for the machine runs.
+    pub home: String,
 }
 
 /// The separator between a `PATH`'s folders on this system.
@@ -119,6 +121,13 @@ fn search(path: &str, program: &str) -> Option<PathBuf> {
         .find(|candidate| candidate.is_file())
 }
 
+/// The person's home folder on this system.
+fn home() -> String {
+    std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .unwrap_or_default()
+}
+
 /// The agents on this system itself.
 pub async fn on_this_system() -> Vec<Found> {
     let path = current_path().await;
@@ -131,6 +140,7 @@ pub async fn on_this_system() -> Vec<Found> {
                 program: program.to_string_lossy().into_owned(),
                 args: kind.args().iter().map(|arg| (*arg).to_owned()).collect(),
                 path: path.clone(),
+                home: home(),
             })
         })
         .collect()
@@ -151,7 +161,7 @@ pub async fn in_distro(distro: &str) -> Vec<Found> {
             )
         })
         .collect();
-    let script = format!("printf '{MARK}\\n%s\\n' \"$PATH\"; {probes}");
+    let script = format!("printf '{MARK}\\n%s\\n%s\\n' \"$PATH\" \"$HOME\"; {probes}");
     let mut command = system::command("wsl.exe");
     command.args(["--distribution", distro, "--exec", "bash", "-lic", &script]);
     let Some(said) = system::output(command).await else {
@@ -160,14 +170,15 @@ pub async fn in_distro(distro: &str) -> Vec<Found> {
     parse_distro(distro, &said)
 }
 
-/// Reads what the WSL script printed: the mark, the `PATH`, then one line per agent kind, empty
-/// when it is not there.
+/// Reads what the WSL script printed: the mark, the `PATH`, the home folder, then one line per
+/// agent kind, empty when it is not there.
 fn parse_distro(distro: &str, said: &str) -> Vec<Found> {
     let Some((_, after)) = said.split_once(&format!("{MARK}\n")) else {
         return Vec::new();
     };
     let mut lines = after.lines();
     let path = lines.next().unwrap_or_default().to_owned();
+    let home = lines.next().unwrap_or_default().to_owned();
     AgentKind::ALL
         .into_iter()
         .zip(lines)
@@ -178,6 +189,7 @@ fn parse_distro(distro: &str, said: &str) -> Vec<Found> {
             program: line.to_owned(),
             args: kind.args().iter().map(|arg| (*arg).to_owned()).collect(),
             path: path.clone(),
+            home: home.clone(),
         })
         .collect()
 }
@@ -192,6 +204,7 @@ pub async fn everywhere(custom: Option<&[String]>) -> Vec<Found> {
             program: program.clone(),
             args: args.to_vec(),
             path: current_path().await,
+            home: home(),
         }],
         _ => on_this_system().await,
     };
@@ -218,11 +231,12 @@ mod tests {
 
     #[test]
     fn a_distros_agents_are_read_past_whatever_the_profile_printed() {
-        let said = "Welcome to Ubuntu!\n--player-two--\n/home/bob/.local/bin:/usr/bin\n/home/bob/.local/bin/agent\n\n/home/bob/.nvm/versions/node/v24/bin/claude-agent-acp\n";
+        let said = "Welcome to Ubuntu!\n--player-two--\n/home/bob/.local/bin:/usr/bin\n/home/bob\n/home/bob/.local/bin/agent\n\n/home/bob/.nvm/versions/node/v24/bin/claude-agent-acp\n";
         let found = parse_distro("Ubuntu", said);
         let kinds: Vec<AgentKind> = found.iter().map(|agent| agent.kind).collect();
         assert_eq!(kinds, [AgentKind::Cursor, AgentKind::Claude]);
         assert_eq!(found[0].path, "/home/bob/.local/bin:/usr/bin");
+        assert_eq!(found[0].home, "/home/bob");
         assert_eq!(found[0].args, ["acp"]);
         assert_eq!(
             for_system(&found, &RunsIn::Wsl("Ubuntu".to_owned())).map(|agent| agent.kind),

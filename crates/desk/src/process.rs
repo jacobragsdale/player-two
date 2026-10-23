@@ -18,12 +18,11 @@ const KEPT_LINES: usize = 20;
 /// An agent's process, running.
 pub struct Running {
     child: Box<dyn ChildWrapper>,
-    /// Where the desk writes to the agent.
-    pub stdin: ChildStdin,
-    /// Where the agent writes to the desk.
-    pub stdout: ChildStdout,
     errors: Arc<Mutex<VecDeque<String>>>,
 }
+
+/// An agent just started: its process, where the desk writes to it, and where it writes back.
+pub type Started = (Running, ChildStdin, ChildStdout);
 
 impl std::fmt::Debug for Running {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -33,45 +32,24 @@ impl std::fmt::Debug for Running {
     }
 }
 
-/// Where a place's agent starts: its folder, or for the machine the home folder.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Folder {
-    /// The person's home folder.
-    Home,
-    /// This folder.
-    At(String),
-}
-
-/// Starts an agent in a folder.
-pub fn start(agent: &Found, folder: &Folder) -> anyhow::Result<Running> {
+/// Starts an agent in a folder: a checkout's, or for the machine the agent's home folder.
+pub fn start(agent: &Found, folder: &str) -> anyhow::Result<Started> {
     let mut command = match &agent.runs_in {
         RunsIn::Windows => {
             let program = agent.program.clone();
             let args = agent.args.clone();
             let path = agent.path.clone();
-            let folder = match folder {
-                Folder::At(path) => Some(path.clone()),
-                Folder::Home => std::env::var("USERPROFILE")
-                    .or_else(|_| std::env::var("HOME"))
-                    .ok(),
-            };
+            let folder = folder.to_owned();
             CommandWrap::with_new(program, move |command| {
-                command.args(&args).env("PATH", &path);
-                if let Some(folder) = &folder {
-                    command.current_dir(folder);
-                }
+                command.args(&args).env("PATH", &path).current_dir(&folder);
             })
         }
         RunsIn::Wsl(distro) => {
-            let folder = match folder {
-                Folder::At(path) => path.clone(),
-                Folder::Home => "~".to_owned(),
-            };
             let mut args = vec![
                 "--distribution".to_owned(),
                 distro.clone(),
                 "--cd".to_owned(),
-                folder,
+                folder.to_owned(),
                 "--exec".to_owned(),
                 "/usr/bin/env".to_owned(),
                 format!("PATH={}", agent.path),
@@ -124,12 +102,7 @@ pub fn start(agent: &Found, folder: &Folder) -> anyhow::Result<Running> {
             }
         });
     }
-    Ok(Running {
-        child,
-        stdin,
-        stdout,
-        errors,
-    })
+    Ok((Running { child, errors }, stdin, stdout))
 }
 
 impl Running {
@@ -161,7 +134,7 @@ mod tests {
     use player_two_core::event::RunsIn;
     use tokio::io::AsyncBufReadExt;
 
-    use super::{Folder, start};
+    use super::start;
     use crate::agents::{AgentKind, Found};
 
     /// A program that starts a long-running child, prints the child's process id, and waits.
@@ -187,6 +160,7 @@ mod tests {
             program: program.to_owned(),
             args,
             path: std::env::var("PATH").unwrap_or_default(),
+            home: std::env::temp_dir().to_string_lossy().into_owned(),
         }
     }
 
@@ -223,8 +197,9 @@ mod tests {
 
     #[tokio::test]
     async fn stopping_an_agent_stops_what_it_started() {
-        let mut running = start(&parent(), &Folder::Home).expect("it starts");
-        let mut lines = tokio::io::BufReader::new(&mut running.stdout).lines();
+        let agent = parent();
+        let (mut running, _stdin, stdout) = start(&agent, &agent.home).expect("it starts");
+        let mut lines = tokio::io::BufReader::new(stdout).lines();
         let child = tokio::time::timeout(std::time::Duration::from_secs(30), lines.next_line())
             .await
             .expect("the child's id arrives")
