@@ -4,11 +4,11 @@ The hub hands out the app and keeps everyone on its version. This comes before a
 
 ## Tasks
 
-- [ ] **P3-1 The installer.**
+- [x] **P3-1 The installer.**
   - An NSIS installer with `installMode: currentUser`, so no admin rights are needed.
   - WebView2 is assumed present (`webviewInstallMode: skip`).
   - It is named `player-two-setup.exe`.
-- [ ] **P3-2 Updates.**
+- [x] **P3-2 Updates.**
   - Use `tauri-plugin-updater`, with its public key in the app's configuration.
   - Its endpoint is set at run time to the hub's `/update`, from `identity.json`, so no address is built in.
   - When the hub's version differs, the window offers the update, installs it and restarts.
