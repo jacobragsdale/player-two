@@ -1,10 +1,11 @@
-# Azure DevOps release pipeline. It builds the Windows installer, then the hub's image, which carries the installer.
+# Azure DevOps release pipeline. A tag vX.Y.Z builds the Windows installer, signed for the updater,
+# then the hub's image, which carries it. Deploying is `kubectl set image` to the new tag.
 #
-# This is a stub. Fill in every TODO with your organisation's names. Task P3-5 replaces the placeholder
-# steps with the real commands. The repository is public, so nothing internal belongs in this file:
-# keep names and secrets in the variable group and the service connection.
+# Fill in every TODO with your organisation's names. The repository is public, so nothing internal
+# belongs in this file: names stay TODO here, and secrets stay in the variable group.
 #
-# Point the pipeline at this repository through a GitHub service connection, or at an internal mirror of it.
+# Point the pipeline at this repository through a GitHub service connection, or at an internal
+# mirror of it.
 
 trigger:
   tags:
@@ -12,7 +13,8 @@ trigger:
 pr: none
 
 variables:
-  # TODO: a variable group holding TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD, both secret.
+  # TODO: a variable group holding TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD,
+  # both secret: the contents of the updater's private key file, and its password.
   - group: TODO-player-two-release
   # TODO: a Docker registry service connection to your registry.
   - name: containerRegistry
@@ -30,15 +32,34 @@ stages:
           vmImage: windows-latest # TODO: or your own pool, as `name: TODO`
         steps:
           - checkout: self
-          # TODO (P3-5): install Rust stable and Node 26, run `npm ci --prefix ui`, then `cargo tauri build`.
-          - script: echo "TODO (P3-5) build the installer"
+          - task: UseNode@1
+            inputs:
+              version: "26.x"
+          - pwsh: |
+              # The tag must name the workspace's version, the only version number.
+              $tag = "$(Build.SourceBranchName)"
+              $version = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
+              if ($tag -ne "v$version") { Write-Error "the tag $tag is not v$version, the version in Cargo.toml"; exit 1 }
+              # Rust is on the hosted image; this installs the channel rust-toolchain.toml names.
+              rustup show
+            displayName: Check the version and the toolchain
+          - pwsh: |
+              npm ci --prefix ui
+              npm --prefix ui run build
+              npm --prefix ui exec -- tauri build --config crates/app/tauri.release.conf.json
             displayName: Build the installer
             env:
               TAURI_SIGNING_PRIVATE_KEY: $(TAURI_SIGNING_PRIVATE_KEY)
               TAURI_SIGNING_PRIVATE_KEY_PASSWORD: $(TAURI_SIGNING_PRIVATE_KEY_PASSWORD)
-          # TODO (P3-5): publish player-two-setup.exe and its .sig from target/release/bundle/nsis.
-          - script: echo "TODO (P3-5) publish the installer"
-            displayName: Publish the installer
+          - pwsh: |
+              # Tauri names the installer after the product and version; the hub serves it by one name.
+              $exe = Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+              New-Item -ItemType Directory -Force release | Out-Null
+              Copy-Item $exe.FullName release/player-two-setup.exe
+              Copy-Item "$($exe.FullName).sig" release/player-two-setup.exe.sig
+            displayName: Name the installer
+          - publish: release
+            artifact: installer
 
   - stage: image
     displayName: Hub image
@@ -49,9 +70,13 @@ stages:
           vmImage: ubuntu-latest # TODO: or your own pool, as `name: TODO`
         steps:
           - checkout: self
-          # TODO (P3-5): download the installer artifact into deploy/release/.
-          - script: echo "TODO (P3-5) fetch the installer into deploy/release"
-            displayName: Fetch the installer
+          - download: current
+            artifact: installer
+          - bash: |
+              cp "$(Pipeline.Workspace)/installer/player-two-setup.exe" "$(Pipeline.Workspace)/installer/player-two-setup.exe.sig" deploy/release/
+              tag="$(Build.SourceBranchName)"
+              echo "##vso[task.setvariable variable=version]${tag#v}"
+            displayName: Put the installer where the image takes it from
           - task: Docker@2
             displayName: Build and push the image
             inputs:
@@ -60,7 +85,7 @@ stages:
               repository: $(imageRepository)
               Dockerfile: deploy/Dockerfile
               buildContext: .
-              tags: $(Build.SourceBranchName)
+              tags: $(version)
 
   # TODO: a deploy stage, if you want one, along the lines of
-  # kubectl set image deployment/player-two hub=<registry>/$(imageRepository):$(Build.SourceBranchName)
+  # kubectl set image deployment/player-two hub=<registry>/$(imageRepository):<version>
