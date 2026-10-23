@@ -1,0 +1,57 @@
+//! What crosses between the window and the desk: a request, and its response.
+//!
+//! These are the only types the webview sees. A test writes them to `ui/src/desk.ts`, so the
+//! window is typed by what is here and never by hand.
+
+use serde::{Deserialize, Serialize};
+use specta::Type;
+
+/// Something the window asks of the desk.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Type)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Request {
+    /// Asks the desk to say who it is.
+    Hello,
+}
+
+/// The desk's answer to one [`Request`].
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Type)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Response {
+    /// The answer to [`Request::Hello`].
+    Hello {
+        /// The version the hub, the app and the desk all share.
+        version: String,
+    },
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::Path;
+
+    use specta::Types;
+    use specta_typescript::Typescript;
+
+    use super::{Request, Response};
+
+    const HEADER: &str = "// Written by the desk's tests from crates/desk/src/ui.rs.";
+
+    /// Rewrites `ui/src/desk.ts` when it is out of date, and fails so that the change is seen.
+    #[test]
+    fn the_window_has_the_desks_types() {
+        let types = Types::default()
+            .register::<Request>()
+            .register::<Response>();
+        let written = Typescript::default()
+            .header(HEADER)
+            .export(&types, specta_serde::Format)
+            .expect("the desk's types can be written as TypeScript");
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/src/desk.ts");
+        let found = fs::read_to_string(&path).unwrap_or_default();
+        if found != written {
+            fs::write(&path, &written).expect("ui/src/desk.ts can be written");
+            panic!("ui/src/desk.ts was out of date; it has been rewritten, so commit it");
+        }
+    }
+}

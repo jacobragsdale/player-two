@@ -17,7 +17,7 @@ Every part exists, does nothing yet, and is checked on every push. Read [`../pla
   - The content security policy is v0.7.1's (`default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:`), plus the IPC origins Tauri needs in `connect-src`.
   - The webview's capabilities grant only the `desk` command and the `desk` event.
   - Add no Tauri plugin the webview can call.
-- [ ] **P0-5 The desk boundary.** As described in [`protocol.md`](protocol.md#the-desk-boundary):
+- [x] **P0-5 The desk boundary.** As described in [`protocol.md`](protocol.md#the-desk-boundary):
   - `crates/desk/src/ui.rs` has `Request`, `Response` and `Event`, with one `Hello` request to start.
   - A test writes `ui/src/desk.ts` with `specta-typescript`, and fails when the file is out of date.
   - The app's `desk` command passes requests to the desk, and the window shows the desk's hello.

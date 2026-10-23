@@ -3,7 +3,15 @@
 // A release build is a windowed app with no console of its own.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use tauri::Manager;
+use player_two_desk::Desk;
+use player_two_desk::ui::{Request, Response};
+use tauri::{Manager, State};
+
+/// Passes one request from the window to the desk. This is the only command the webview may call.
+#[tauri::command]
+async fn desk(request: Request, desk: State<'_, Desk>) -> Result<Response, String> {
+    Ok(desk.handle(request).await)
+}
 
 fn main() -> anyhow::Result<()> {
     tauri::Builder::default()
@@ -15,6 +23,8 @@ fn main() -> anyhow::Result<()> {
                 let _ = window.set_focus();
             }
         }))
+        .manage(Desk::new())
+        .invoke_handler(tauri::generate_handler![desk])
         .run(tauri::generate_context!())?;
     Ok(())
 }

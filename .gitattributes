@@ -1,0 +1,4 @@
+# Every text file is LF everywhere, so the checks that compare files read the same on Windows.
+* text=auto eol=lf
+*.png binary
+*.ico binary
