@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 
 import { LeaveChannel } from "./Channels.tsx";
 import { Composer } from "./Composer.tsx";
-import type { ChatId, ChatView, Mode } from "./desk.ts";
+import type { ChatId, ChatView, Mode, Person } from "./desk.ts";
 import { ask, problem } from "./deskClient.ts";
 import { useChat } from "./hooks.ts";
 import { Message } from "./Message.tsx";
@@ -25,6 +25,8 @@ interface Props {
   readonly onLeft: (() => void) | null;
   /** The mode the person's own agent runs at by default. */
   readonly mode: Mode;
+  /** Everyone who can be tagged. */
+  readonly people: readonly Person[];
 }
 
 /** The chat's name, or "Thread"; in a channel's top level, who else is in it and the button that leaves it; in a thread, the button that closes it. */
@@ -71,7 +73,7 @@ function Older({ chat }: { readonly chat: ChatId }): JSX.Element {
   );
 }
 
-export function Chat({ chat, me, thread, onThread, onClose, onLeft, mode }: Props): JSX.Element {
+export function Chat({ chat, me, thread, onThread, onClose, onLeft, mode, people }: Props): JSX.Element {
   const view = useChat(chat, thread);
   const list = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
@@ -106,11 +108,11 @@ export function Chat({ chat, me, thread, onThread, onClose, onLeft, mode }: Prop
     return <section className="flex flex-1 items-center justify-center text-muted-foreground">Loading…</section>;
   }
   return (
-    <section className="flex min-w-0 flex-1 flex-col" aria-label={thread === null ? view.title : "thread"}>
+    <section className="flex min-h-0 min-w-0 flex-1 flex-col" aria-label={thread === null ? view.title : "thread"}>
       <Header view={view} me={me} onClose={onClose} onLeft={onLeft} />
       <div
         ref={list}
-        className="flex-1 overflow-y-auto py-2"
+        className="min-h-0 flex-1 overflow-y-auto py-2"
         onScroll={(event) => {
           const element = event.currentTarget;
           atBottom.current = element.scrollHeight - element.scrollTop - element.clientHeight < NEAR_BOTTOM;
@@ -127,7 +129,7 @@ export function Chat({ chat, me, thread, onThread, onClose, onLeft, mode }: Prop
           </div>
         ))}
       </div>
-      <Composer key={mode} chat={chat} thread={thread} mode={mode} placeholder={thread === null ? `Message ${view.title}` : "Reply in the thread"} />
+      <Composer key={mode} chat={chat} thread={thread} mode={mode} people={people} members={view.members} placeholder={thread === null ? `Message ${view.title}` : "Reply in the thread"} />
     </section>
   );
 }

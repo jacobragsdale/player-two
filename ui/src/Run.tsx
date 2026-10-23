@@ -154,21 +154,47 @@ export function Run({ run, chat, me }: { readonly run: RunView; readonly chat: C
   );
 }
 
-/** A line for each tag nobody has answered yet. */
-export function Waiting({ tags, me, author }: { readonly tags: readonly Tag[]; readonly me: string; readonly author: string }): JSX.Element | null {
+/** A line for each tag nobody has answered yet, with Withdraw for whoever asked. */
+export function Waiting({
+  tags,
+  me,
+  author,
+  chat,
+  request
+}: {
+  readonly tags: readonly Tag[];
+  readonly me: string;
+  readonly author: string;
+  readonly chat: ChatId;
+  readonly request: number;
+}): JSX.Element | null {
+  const [error, setError] = useState("");
   if (tags.length === 0) {
     return null;
   }
+  const withdraw = (): void => {
+    ask({ type: "withdraw", chat, request }).catch((failure: unknown) => {
+      setError(problem(failure));
+    });
+  };
   return (
     <>
       {tags.map((tag) => (
-        <p key={`${tag.person}/${tag.place}`} className="text-xs text-muted-foreground">
-          ◌{" "}
-          {tag.person === me && author === me
-            ? `your ${tag.place === "machine" ? "computer" : tag.place} was busy, so this is waiting; send it again when the run before it ends`
-            : `waiting for ${tag.person === me ? "you" : tag.person} to approve`}
+        <p key={`${tag.person}/${tag.place}`} className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span>
+            ◌{" "}
+            {tag.person === me && author === me
+              ? `your ${tag.place === "machine" ? "computer" : tag.place} was busy, so this is waiting; send it again when the run before it ends`
+              : `waiting for ${tag.person === me ? "you" : tag.person} to approve`}
+          </span>
+          {author === me && tag.person !== me && (
+            <Button type="button" variant="ghost" size="xs" onClick={withdraw}>
+              Withdraw
+            </Button>
+          )}
         </p>
       ))}
+      {error !== "" && <p className="text-xs text-destructive">{error}</p>}
     </>
   );
 }

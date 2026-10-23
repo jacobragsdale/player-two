@@ -62,7 +62,7 @@ export function Sidebar({ overview, open, onOpen, channelActions, onSettings }: 
   const channels = overview.chats.filter((summary) => summary.here === null);
   const people = overview.chats.filter((summary) => summary.here !== null);
   return (
-    <nav className="flex h-full flex-col bg-sidebar">
+    <nav className="flex h-full min-h-0 flex-col bg-sidebar">
       <div className="flex-1 overflow-y-auto p-2">
         <h2 className={HEADING}>Channels</h2>
         <ul>

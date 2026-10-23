@@ -57,7 +57,7 @@ export function Joined(): JSX.Element {
     );
   }
   return (
-    <main className="grid h-full grid-cols-[15rem_1fr]">
+    <main className="grid h-full grid-cols-[15rem_1fr] overflow-hidden">
       <Sidebar
         overview={overview}
         open={open}
@@ -94,7 +94,7 @@ export function Joined(): JSX.Element {
           }}
         />
       )}
-      <div className="flex min-w-0">
+      <div className="flex min-h-0 min-w-0">
         {open === null ? (
           <section className="flex flex-1 items-center justify-center text-muted-foreground">{overview.connection.state === "connected" ? "Pick a chat." : "Connecting…"}</section>
         ) : (
@@ -110,10 +110,11 @@ export function Joined(): JSX.Element {
               setThread(null);
             }}
             mode={overview.default_mode}
+            people={overview.people}
           />
         )}
         {open !== null && thread !== null && (
-          <div className="flex w-96 flex-none border-l">
+          <div className="flex min-h-0 w-96 flex-none border-l">
             <Chat
               key={`${open}/${String(thread)}`}
               chat={open}
@@ -125,6 +126,7 @@ export function Joined(): JSX.Element {
               }}
               onLeft={null}
               mode={overview.default_mode}
+              people={overview.people}
             />
           </div>
         )}

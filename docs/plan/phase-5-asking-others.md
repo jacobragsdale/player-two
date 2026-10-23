@@ -4,10 +4,10 @@ A teammate's tag runs on your machine only after you approve it, and they can he
 
 ## Tasks
 
-- [ ] **P5-1 Tagging others.**
+- [x] **P5-1 Tagging others.**
   - The list that opens on `@` shows people and their places, from `GET /people`. Lift the ranking ideas from v0.7.1's `Composer`.
   - A tag of someone with no such place, or of nobody, gets a line under the message saying so.
-- [ ] **P5-2 The approval card.** The owner sees:
+- [x] **P5-2 The approval card.** The owner sees:
   - who asked, and the text;
   - the mode;
   - where it runs, only when the place has both Windows and WSL;
@@ -15,19 +15,19 @@ A teammate's tag runs on your machine only after you approve it, and they can he
   - for a checkout, a warning when it has uncommitted changes.
 
   The owner can Approve or Decline. The asker can Withdraw until the owner acts.
-- [ ] **P5-3 Running a request.**
+- [x] **P5-3 Running a request.**
   - Approving posts `run.accepted`, and the run goes as in phase 4.
   - Everyone in the chat sees the state line, the activity and the answer.
   - Only the owner can Stop.
-- [ ] **P5-4 Handing over the steps.**
+- [x] **P5-4 Handing over the steps.**
   - In ask mode, "Let NAME approve the steps" sets `steps_by: "asker"`.
   - The prompt cards then appear for the asker, and the desk accepts `run.answer` only from them.
   - The owner still sees everything and can Stop.
-- [ ] **P5-5 Follow-ups.**
+- [x] **P5-5 Follow-ups.**
   - The asker's messages in the request's thread go to the same agent session.
   - Each follow-up waits for a click, unless the owner ticked "Let NAME keep going", which holds until Stop or an hour of quiet.
   - After the app restarts, a follow-up starts a fresh session, given the thread's text.
-- [ ] **P5-6 Waiting requests.**
+- [x] **P5-6 Waiting requests.**
   - Requests that arrived while the owner's app was closed are shown when it opens.
   - None of them runs until clicked, `keep_going` included, since it lapses after an hour anyway.
 - [x] **P5-7 The scenario test.** It uses the fake agent:
@@ -45,3 +45,4 @@ A teammate's tag runs on your machine only after you approve it, and they can he
 A developer can help a less technical colleague fix something on their machine through Player Two. The colleague stays in charge throughout, and both can see what happened.
 
 ## Notes
+- **The window's parts of P5-1 to P5-6 landed together**, in one commit after the desk's: the `@` list and the lines for tags that name nobody, the approval card with handing over the steps and keep going, the follow-up card, and Withdraw. A request that arrived while the app was closed shows its card when the app opens, and nothing runs until the owner approves it: keep going lives only in a session the running app kept.

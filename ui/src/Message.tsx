@@ -5,6 +5,7 @@ import type { JSX } from "react";
 import { Button } from "@/components/ui/button";
 
 import type { ChatId, Item } from "./desk.ts";
+import { Approval } from "./Approval.tsx";
 import { Run, Waiting } from "./Run.tsx";
 import { Text } from "./Text.tsx";
 
@@ -36,7 +37,24 @@ export function Message({ item, me, chat, onThread }: { readonly item: Item; rea
       {item.runs.map((run) => (
         <Run key={run.id} run={run} chat={chat} me={me} />
       ))}
-      <Waiting tags={item.waiting} me={me} author={item.author} />
+      <Waiting tags={item.waiting} me={me} author={item.author} chat={chat} request={item.id} />
+      {item.author !== me &&
+        item.waiting.filter((tag) => tag.person === me).map((tag) => <Approval key={tag.place} chat={chat} request={item.id} place={tag.place} asker={item.author} follows={null} />)}
+      {item.follows !== null && item.follows.owner === me && item.follows.state !== "working" && (
+        <Approval
+          chat={chat}
+          request={item.id}
+          place={item.follows.place}
+          asker={item.author}
+          follows={{ mode: item.follows.mode, steps_by: item.follows.steps_by, keep_going: false, runs_in: item.follows.runs_in }}
+        />
+      )}
+      {item.follows !== null && item.follows.owner !== me && item.runs.length === 0 && <p className="text-xs text-muted-foreground">◌ waiting for {item.follows.owner} to run it</p>}
+      {item.unknown.map((line) => (
+        <p key={line} className="text-xs text-muted-foreground">
+          ? {line}
+        </p>
+      ))}
       {onThread !== null && item.replies > 0 && (
         <Button type="button" variant="link" size="xs" className="h-auto px-0 text-tag" onClick={open}>
           {item.replies} {item.replies === 1 ? "reply" : "replies"}
