@@ -11,6 +11,7 @@ pub mod chats;
 pub mod files;
 pub mod hub;
 mod looking;
+pub mod mask;
 pub mod places;
 pub mod process;
 pub mod runs;

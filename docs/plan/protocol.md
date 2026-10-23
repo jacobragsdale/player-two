@@ -70,7 +70,7 @@ Rules every desk keeps, as well as the hub:
 - **A follow-up is a `message` in a request's thread,** written by the original asker. It needs a new `run.accepted` from the owner. The owner's desk posts that by itself only while the thread's `keep_going` holds: until a `run.ended` with `how: "stopped"`, or until an hour passes with no event in the thread.
 - **Your own tag** sent from your window produces the same events, with `steps_by: "owner"`.
 - **Each place has at most one active run.** A second request stays waiting, and its card says the place is busy and with whose request.
-- **Credentials are masked.** Before posting `run.activity`, `run.prompt` or `run.result`, the owner's desk replaces with `****` the password in a URL's `user:password@`, and the value after `password=`, `token=` or `Authorization:`, in any case.
+- **Credentials are masked.** Before posting `run.activity`, `run.prompt`, `run.result` or the reason of a `run.ended`, the owner's desk replaces with `****` the password in a URL's `user:password@`, and the value after `password=`, `token=` or `Authorization:`, in any case.
 
 ## Modes
 

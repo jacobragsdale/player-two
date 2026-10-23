@@ -8,6 +8,7 @@
 //! - `fail`: fails the turn.
 //! - `sign in`: says it must be signed in.
 //! - `echo`: answers with the whole prompt it was given.
+//! - `secret`: reads a file holding a proxy password, and answers with a token.
 //!
 //! Every turn that does not fail ends with an answer saying what it did.
 //!
@@ -124,6 +125,17 @@ async fn turn(
             ))]);
         say(&connection, SessionUpdate::ToolCall(call))?;
         did.push("read pip.conf".to_owned());
+    }
+    if prompt.contains("secret") {
+        let call = ToolCall::new("secret-1", "Read pip.ini")
+            .kind(ToolKind::Read)
+            .status(ToolCallStatus::Completed)
+            .raw_input(serde_json::json!({"path": "pip.ini"}))
+            .content(vec![ToolCallContent::from(text(
+                "[global]\nproxy = http://jacob:hunter2@proxy:8080",
+            ))]);
+        say(&connection, SessionUpdate::ToolCall(call))?;
+        did.push("read pip.ini, token=abc123".to_owned());
     }
     if prompt.contains("edit") {
         let diff = ToolCallContent::Diff(

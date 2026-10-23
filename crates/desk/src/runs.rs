@@ -18,6 +18,7 @@ use crate::Desk;
 use crate::acp::{Ended, Said, Session};
 use crate::activity::Reach;
 use crate::agents;
+use crate::mask::mask;
 
 /// How long activity is gathered before it is posted, so that a busy agent posts a few events
 /// rather than one for every change.
@@ -310,7 +311,7 @@ impl Desk {
                 };
                 let result = Body::RunResult(RunResult {
                     run: report.run,
-                    text,
+                    text: mask(&text),
                 });
                 if let Err(error) = self.post(&report.chat, Some(report.thread), result).await {
                     eprintln!("error: cannot post a run's answer: {error:#}");
@@ -370,7 +371,7 @@ impl Desk {
                 let body = Body::RunPrompt(RunPrompt {
                     run: report.run,
                     prompt: prompt.clone(),
-                    what,
+                    what: mask(&what),
                 });
                 if let Err(error) = self.post(&report.chat, Some(report.thread), body).await {
                     eprintln!("error: cannot post a step to answer: {error:#}");
@@ -404,7 +405,16 @@ impl Desk {
         if batch.is_empty() {
             return;
         }
-        let items = std::mem::take(batch);
+        let items = std::mem::take(batch)
+            .into_iter()
+            .map(|item| Activity {
+                id: item.id,
+                verb: mask(&item.verb),
+                object: mask(&item.object),
+                outcome: item.outcome.as_deref().map(mask),
+                output: item.output.as_deref().map(mask),
+            })
+            .collect();
         let body = Body::RunActivity(RunActivity {
             run: report.run,
             items,
@@ -415,10 +425,11 @@ impl Desk {
     }
 
     async fn end_run(&self, report: &Report, how: Ending, reason: Option<String>) {
+        // A failure can quote what the agent printed.
         let body = Body::RunEnded(RunEnded {
             run: report.run,
             how,
-            reason,
+            reason: reason.as_deref().map(mask),
         });
         if let Err(error) = self.post(&report.chat, Some(report.thread), body).await {
             eprintln!("error: cannot post how a run ended: {error:#}");

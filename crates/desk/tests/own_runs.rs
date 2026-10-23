@@ -7,6 +7,7 @@ use common::{Hub, chat, overview};
 use player_two_core::event::Mode;
 use player_two_core::names::{ChatId, PlaceName};
 use player_two_desk::Desk;
+use player_two_desk::files::Files;
 use player_two_desk::ui::{ChatView, Item, Request, Response, RunState};
 
 const CHAT: &str = "#ops";
@@ -239,4 +240,42 @@ async fn a_follow_up_of_your_own_run_runs_at_once_at_your_mode() {
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     }
     panic!("the follow-up did not run");
+}
+
+#[tokio::test]
+async fn credentials_are_masked_before_they_reach_the_chat() {
+    let hub = Hub::start().await;
+    let desk = alice(&hub).await;
+    send(&desk, "@alice show the secret", None).await;
+    let item = until_item(&desk, "@alice show the secret", "the run", |item| {
+        item.runs
+            .first()
+            .is_some_and(|run| run.state == RunState::Done)
+    })
+    .await;
+    let run = &item.runs[0];
+    let output = run.activity[0].output.as_deref().unwrap_or_default();
+    assert!(output.contains("http://jacob:****@proxy:8080"), "{output}");
+    assert_eq!(
+        run.result.as_deref(),
+        // A value runs to a space or a separator, so a token's dots, and here the full stop, go.
+        Some("Did: read pip.ini, token=****")
+    );
+    // What the hub keeps is masked too, not only what this desk shows.
+    let page = reqwest::Client::new()
+        .get(format!("{}/chats/%23ops/events", hub.base))
+        .bearer_auth(
+            Files::new(hub.folder("alice"))
+                .identity()
+                .expect("read")
+                .expect("joined")
+                .token,
+        )
+        .send()
+        .await
+        .expect("the hub answers")
+        .text()
+        .await
+        .expect("a page");
+    assert!(!page.contains("hunter2") && !page.contains("abc123"));
 }
