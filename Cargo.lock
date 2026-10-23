@@ -2491,6 +2491,12 @@ dependencies = [
 [[package]]
 name = "player-two-core"
 version = "0.8.0"
+dependencies = [
+ "base64 0.23.1",
+ "serde",
+ "serde_json",
+ "specta",
+]
 
 [[package]]
 name = "player-two-desk"

@@ -4,7 +4,7 @@ The whole hub, tested end to end and ready to deploy. [`protocol.md`](protocol.m
 
 ## Tasks
 
-- [ ] **P1-1 The wire types.** `crates/core` holds the names, chat ids, the event envelope, every `kind`'s body, the join code, and the API's requests and responses. All of them use serde. Tests pin the JSON shape of each against `protocol.md`.
+- [x] **P1-1 The wire types.** `crates/core` holds the names, chat ids, the event envelope, every `kind`'s body, the join code, and the API's requests and responses. All of them use serde. Tests pin the JSON shape of each against `protocol.md`.
 - [ ] **P1-2 The database.**
   - Open it with the pragmas in [Storage](protocol.md#storage), and refuse to start on a file that fails `quick_check`.
   - Build the schema, with `user_version` migrations.
