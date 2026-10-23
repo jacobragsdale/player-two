@@ -1,9 +1,12 @@
-//! What crosses between the window and the desk: a request, and its response.
+//! What crosses between the window and the desk: a request and its response, and the events the
+//! desk sends unasked.
 //!
 //! These are the only types the webview sees. A test writes them to `ui/src/desk.ts`, so the
 //! window is typed by what is here and never by hand.
 
-use player_two_core::names::PersonName;
+use player_two_core::api::{ChannelInfo, Person};
+use player_two_core::event::{EventId, Tag};
+use player_two_core::names::{ChatId, PersonName};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
@@ -20,6 +23,49 @@ pub enum Request {
         /// The join code, as pasted.
         code: String,
         /// The name to join under.
+        name: String,
+    },
+    /// Asks for the chat list, the people and how the connection stands.
+    Overview,
+    /// Asks for one chat, or one thread of it.
+    Chat {
+        /// Which chat.
+        chat: ChatId,
+        /// The thread, by its first message, or the chat's top level.
+        thread: Option<EventId>,
+    },
+    /// Fetches the chat's next older page from the hub.
+    Older {
+        /// Which chat.
+        chat: ChatId,
+    },
+    /// Sends a message.
+    Send {
+        /// Where.
+        chat: ChatId,
+        /// In which thread, if any.
+        thread: Option<EventId>,
+        /// What it says.
+        text: String,
+    },
+    /// Marks everything in a chat as read.
+    Read {
+        /// Which chat.
+        chat: ChatId,
+    },
+    /// Makes a channel and joins it.
+    CreateChannel {
+        /// Its name, without `#`.
+        name: String,
+    },
+    /// Joins a channel.
+    JoinChannel {
+        /// Its name, without `#`.
+        name: String,
+    },
+    /// Leaves a channel.
+    LeaveChannel {
+        /// Its name, without `#`.
         name: String,
     },
 }
@@ -40,8 +86,113 @@ pub enum Response {
         /// The name to offer, from the Windows user name.
         suggested_name: Option<String>,
     },
+    /// The answer to [`Request::Overview`].
+    Overview(Overview),
+    /// The answer to [`Request::Chat`].
+    Chat(ChatView),
     /// The request was done, and there is nothing more to say.
     Done,
+}
+
+/// Something the desk tells the window without being asked: what to ask for again.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Type)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Event {
+    /// The overview changed.
+    Overview,
+    /// A chat changed.
+    Chat {
+        /// Which.
+        chat: ChatId,
+    },
+}
+
+/// How the desk stands with the hub.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Type)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum Connection {
+    /// This machine has not joined a hub.
+    NotJoined,
+    /// Connecting, or loading what is there.
+    Connecting,
+    /// Up to date, and hearing new events as they come.
+    Connected,
+    /// Not connected; trying again.
+    Offline {
+        /// Why, in words.
+        reason: String,
+    },
+    /// The hub runs another version, so the app must change before anything else.
+    WrongVersion {
+        /// The hub's version.
+        hub: String,
+    },
+}
+
+/// The chat list, the people and how the connection stands.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Type)]
+pub struct Overview {
+    /// Who this machine joined as.
+    pub me: Option<PersonName>,
+    /// How the desk stands with the hub.
+    pub connection: Connection,
+    /// The chats to list: the person's channels, then a direct chat with everyone else.
+    pub chats: Vec<ChatSummary>,
+    /// Everyone who has joined.
+    pub people: Vec<Person>,
+    /// Every channel, joined or not.
+    pub channels: Vec<ChannelInfo>,
+}
+
+/// One line of the chat list.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Type)]
+pub struct ChatSummary {
+    /// The chat.
+    pub chat: ChatId,
+    /// What to call it: `#name`, or the other person's name.
+    pub title: String,
+    /// Messages from others since the person last read it.
+    pub unread: u32,
+    /// For a direct chat, whether the other person is here.
+    pub here: Option<bool>,
+}
+
+/// One chat, or one thread of it.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Type)]
+pub struct ChatView {
+    /// The chat.
+    pub chat: ChatId,
+    /// What to call it.
+    pub title: String,
+    /// Who is in it.
+    pub members: Vec<PersonName>,
+    /// The thread shown, by its first message, or none for the top level.
+    pub thread: Option<EventId>,
+    /// Its messages, oldest first.
+    pub items: Vec<Item>,
+    /// Whether the hub has older events than these.
+    pub has_older: bool,
+    /// The first message the person has not read, if any.
+    pub first_unread: Option<EventId>,
+}
+
+/// One message as the window draws it.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Type)]
+pub struct Item {
+    /// Its id.
+    pub id: EventId,
+    /// Who wrote it.
+    pub author: PersonName,
+    /// When, in Unix milliseconds.
+    // A `number` in TypeScript, as the event's `ts` is.
+    #[specta(type = i32)]
+    pub ts: i64,
+    /// What it says. The window draws it as text.
+    pub text: String,
+    /// The places it tags.
+    pub tags: Vec<Tag>,
+    /// How many replies its thread has.
+    pub replies: u32,
 }
 
 #[cfg(test)]
@@ -52,7 +203,7 @@ mod tests {
     use specta::Types;
     use specta_typescript::Typescript;
 
-    use super::{Request, Response};
+    use super::{Event, Request, Response};
 
     const HEADER: &str = "// Written by the desk's tests from crates/desk/src/ui.rs.";
 
@@ -61,7 +212,8 @@ mod tests {
     fn the_window_has_the_desks_types() {
         let types = Types::default()
             .register::<Request>()
-            .register::<Response>();
+            .register::<Response>()
+            .register::<Event>();
         let written = Typescript::default()
             .header(HEADER)
             .export(&types, specta_serde::Format)

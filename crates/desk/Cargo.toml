@@ -16,6 +16,7 @@ tokio = { version = "1.54.1", features = ["rt", "macros", "sync", "time", "fs", 
 [dev-dependencies]
 axum = "0.8.9"
 player-two-hub.workspace = true
+reqwest = { version = "0.13.5", features = ["json"] }
 specta-serde = "=0.0.14"
 specta-typescript = "=0.0.14"
 tempfile = "3.27.0"

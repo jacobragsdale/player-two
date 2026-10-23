@@ -57,6 +57,8 @@ pub struct Person {
     pub here: bool,
     /// When their last stream closed, in Unix milliseconds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    // A `number` in TypeScript, as the event's `ts` is.
+    #[specta(type = Option<i32>)]
     pub last_seen: Option<i64>,
     /// The places their desk advertises.
     pub places: Vec<PlaceInfo>,

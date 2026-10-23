@@ -8,7 +8,7 @@ The window becomes a chat people can use every day, without agents yet.
   - The desk decodes a join code, prefills the name from the Windows user name, and joins.
   - It saves `identity.json`.
   - A taken name shows the hub's hint: ask an admin to run `reset`.
-- [ ] **P2-2 The desk's hub client.**
+- [x] **P2-2 The desk's hub client.**
   - It uses `reqwest` and reads the stream, reconnecting with backoff and `Last-Event-ID`.
   - The desk holds the chat state (chats, unread counts, threads, presence) and sends changes to the window as `Event`s.
 - [ ] **P2-3 The first-run page.** One field, for the join code, and the name prefilled. It must read clearly to someone who is not technical.

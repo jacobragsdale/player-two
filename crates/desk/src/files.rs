@@ -43,6 +43,14 @@ impl Files {
         self.write("identity.json", identity)
     }
 
+    /// Forgets who this machine joined as.
+    pub fn forget_identity(&self) -> anyhow::Result<()> {
+        match fs::remove_file(self.folder.join("identity.json")) {
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error.into()),
+            _ => Ok(()),
+        }
+    }
+
     /// Reads a JSON file of the folder; `None` when it is not there.
     pub fn read<T: DeserializeOwned>(&self, name: &str) -> anyhow::Result<Option<T>> {
         let path = self.folder.join(name);

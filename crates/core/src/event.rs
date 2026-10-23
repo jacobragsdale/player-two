@@ -11,11 +11,16 @@ use crate::names::{ChatId, PersonName, PlaceName};
 pub const MAX_TEXT: usize = 64_000;
 
 /// An event's number on the hub. Later events have larger numbers.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Type,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct EventId(pub i64);
+
+// TypeScript sees a `number`: ids stay far below 2^53, where a number stops being exact.
+impl Type for EventId {
+    fn definition(types: &mut specta::Types) -> specta::datatype::DataType {
+        <i32 as Type>::definition(types)
+    }
+}
 
 impl fmt::Display for EventId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -36,6 +41,8 @@ pub struct Event {
     /// Who posted it.
     pub author: PersonName,
     /// When the hub stored it, in Unix milliseconds by the hub's clock.
+    // A `number` in TypeScript, exact for the next 280,000 years.
+    #[specta(type = i32)]
     pub ts: i64,
     /// What it says.
     #[serde(flatten)]

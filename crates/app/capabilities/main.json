@@ -3,5 +3,5 @@
   "identifier": "main",
   "description": "The window draws other people's text, so it may call nothing but what is listed here.",
   "windows": ["main"],
-  "permissions": ["allow-desk"]
+  "permissions": ["allow-desk", "core:event:allow-listen", "core:event:allow-unlisten"]
 }

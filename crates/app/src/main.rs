@@ -5,7 +5,7 @@
 
 use player_two_desk::Desk;
 use player_two_desk::ui::{Request, Response};
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 
 /// Passes one request from the window to the desk. This is the only command the webview may call.
 #[tauri::command]
@@ -24,8 +24,17 @@ fn main() -> anyhow::Result<()> {
             }
         }))
         .setup(|app| {
-            let folder = app.path().app_data_dir()?;
-            app.manage(Desk::new(folder));
+            let (desk, mut told) = Desk::new(app.path().app_data_dir()?);
+            let running = desk.clone();
+            tauri::async_runtime::spawn(async move { running.run().await });
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                while let Some(event) = told.recv().await {
+                    // A window still loading misses nothing it needs: it asks for everything first.
+                    let _ = handle.emit("desk", event);
+                }
+            });
+            app.manage(desk);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![desk])
