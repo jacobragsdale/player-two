@@ -10,6 +10,10 @@ import { Chat } from "./Chat.tsx";
 import type { ChatId } from "./desk.ts";
 import { useDeskEvents, useOverview } from "./hooks.ts";
 import { Sidebar } from "./Sidebar.tsx";
+import { WrongVersion } from "./WrongVersion.tsx";
+
+/** The app's version, which is the desk's and the hub's too when all is well. */
+const APP_VERSION = __APP_VERSION__;
 
 export function Joined(): JSX.Element {
   const overview = useOverview();
@@ -35,6 +39,9 @@ export function Joined(): JSX.Element {
 
   if (overview === null) {
     return <main className="flex h-full items-center justify-center text-muted-foreground">Loading…</main>;
+  }
+  if (overview.connection.state === "wrong_version") {
+    return <WrongVersion hub={overview.connection.hub} app={APP_VERSION} />;
   }
   const me = overview.me ?? "";
   return (

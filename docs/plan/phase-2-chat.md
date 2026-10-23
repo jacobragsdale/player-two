@@ -24,7 +24,7 @@ The window becomes a chat people can use every day, without agents yet.
   - Closing the window keeps the app running in the tray, and the tray's Quit really quits.
   - The app starts at login.
   - A notification arrives for a direct message, or a tag of you or your places, and opens that chat when clicked.
-- [ ] **P2-8 Version check.** On connecting, a hub with a different version from the app's stops the desk and makes the window say so. Phase 3 turns this into an update.
+- [x] **P2-8 Version check.** On connecting, a hub with a different version from the app's stops the desk and makes the window say so. Phase 3 turns this into an update.
 - [ ] **P2-9 (workstation)** Two people on work machines chat through a real hub in a channel and directly, and the tray, notifications and start at login all behave.
 
 ## Done when

@@ -1,4 +1,5 @@
 // Builds the window's page into dist, which the Tauri shell opens.
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import tailwindcss from "@tailwindcss/vite";
@@ -28,7 +29,12 @@ const noStyleElements: Plugin = {
   }
 };
 
+const manifest: unknown = JSON.parse(readFileSync(join(import.meta.dirname, "package.json"), "utf8"));
+const version = typeof manifest === "object" && manifest !== null && "version" in manifest ? manifest.version : "";
+
 export default defineConfig({
+  // The version shown when the hub's differs; package.json takes it from Cargo.toml (task P3-3).
+  define: { __APP_VERSION__: JSON.stringify(typeof version === "string" ? version : "") },
   base: "./", // The page is served from the app's own files, so everything it loads is named relative to it.
   plugins: [react(), tailwindcss(), noStyleElements],
   // react-style-singleton writes <style> elements, which the page's content security policy refuses; see styleSingleton.ts.

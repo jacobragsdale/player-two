@@ -31,6 +31,25 @@ const PAGE: u32 = 100;
 const MOST_DELAY: Duration = Duration::from_secs(30);
 /// How often the people and channel lists are fetched again while connected.
 const REFRESH: Duration = Duration::from_secs(60);
+/// How long a desk that found the hub on another version waits before looking again.
+const RECHECK: Duration = Duration::from_secs(300);
+
+/// The hub runs another version than this app, which must change before anything else.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct WrongVersion(String);
+
+impl std::fmt::Display for WrongVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "the hub runs {} and this app {}",
+            self.0,
+            env!("CARGO_PKG_VERSION")
+        )
+    }
+}
+
+impl std::error::Error for WrongVersion {}
 
 /// The desk. Cloning it gives another handle on the same desk.
 #[derive(Debug, Clone)]
@@ -326,6 +345,19 @@ impl Desk {
                     drop(state);
                     continue;
                 }
+                Err(error) if error.downcast_ref::<WrongVersion>().is_some() => {
+                    let hub = error
+                        .downcast_ref::<WrongVersion>()
+                        .map(|wrong| wrong.0.clone())
+                        .unwrap_or_default();
+                    self.set_connection(Connection::WrongVersion { hub });
+                    // Nothing else happens until the versions match: an update, or a new hub.
+                    tokio::select! {
+                        () = tokio::time::sleep(RECHECK) => {}
+                        () = self.inner.wake.notified() => {}
+                    }
+                    continue;
+                }
                 Err(error) => self.set_connection(Connection::Offline {
                     reason: format!("{error:#}"),
                 }),
@@ -344,6 +376,10 @@ impl Desk {
     /// One connection: load what is missing, then follow the stream until it ends.
     async fn session(&self, identity: &Identity, delay: &mut Duration) -> anyhow::Result<()> {
         let hub = Hub::new(self.inner.http.clone(), identity);
+        let version = hub.version().await?;
+        if version != env!("CARGO_PKG_VERSION") {
+            return Err(WrongVersion(version).into());
+        }
         let (channels, people) = (hub.channels().await?, hub.people().await?);
         {
             let mut state = self.state();

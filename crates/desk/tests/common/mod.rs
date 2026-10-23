@@ -64,7 +64,12 @@ impl Hub {
 
     /// A desk with its own folder, not yet joined and not running.
     pub fn desk(&self, folder_name: &str) -> Desk {
-        Desk::new(self.folder.path().join(folder_name)).0
+        Desk::new(self.folder(folder_name)).0
+    }
+
+    /// The folder a desk of that name keeps its files in.
+    pub fn folder(&self, folder_name: &str) -> std::path::PathBuf {
+        self.folder.path().join(folder_name)
     }
 
     /// A desk joined as `name` and running.
