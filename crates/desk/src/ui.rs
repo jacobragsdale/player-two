@@ -124,6 +124,11 @@ pub enum Request {
         /// Windows, or a WSL distro.
         runs_in: RunsIn,
     },
+    /// Signs the agent at a system in over ACP, which for Cursor opens the browser, then checks it.
+    SignIn {
+        /// Windows, or a WSL distro.
+        runs_in: RunsIn,
+    },
     /// Asks what the approval card for a place needs: where it may run, and whether a git
     /// checkout has changes not committed.
     Approval {
@@ -206,12 +211,14 @@ pub enum Response {
         /// The end of what it printed.
         output: String,
     },
-    /// The answer to [`Request::CheckAgent`].
+    /// The answer to [`Request::CheckAgent`] and [`Request::SignIn`].
     Checked {
         /// Whether the agent opened a session.
         ready: bool,
         /// What was found, in words.
         message: String,
+        /// Whether the agent says it must be signed in, so that Sign in is offered.
+        sign_in: bool,
     },
     /// The request was done, and there is nothing more to say.
     Done,

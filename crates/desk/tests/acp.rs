@@ -156,7 +156,7 @@ async fn an_agent_that_must_sign_in_or_fails_says_so() {
     assert!(signed_out.is_err_and(|error| {
         error
             .to_string()
-            .contains("Cursor needs signing in: run `agent login`")
+            .contains("Cursor needs signing in: press Sign in in Settings, or run `agent login`")
     }));
     let failed = session.turn("fail now".to_owned()).await;
     assert!(failed.is_err_and(|error| error.to_string().contains("something broke")));

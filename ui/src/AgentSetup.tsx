@@ -52,7 +52,7 @@ function Command({ text }: { readonly text: string }): JSX.Element {
   );
 }
 
-/** One agent found: the one that runs on its system has a Check, and any other a button that makes it the one. */
+/** One agent found: the one that runs on its system has a Check, and Sign in when the check says it must be; any other agent has a button that makes it the one. */
 function AgentRow({
   agent,
   wsl,
@@ -67,22 +67,26 @@ function AgentRow({
   readonly checkNow: boolean;
   readonly onChoose: () => void;
 }): JSX.Element {
-  const [checking, setChecking] = useState(false);
-  const [result, setResult] = useState<{ readonly ready: boolean; readonly message: string } | null>(null);
-  const check = (): void => {
-    setChecking(true);
-    ask({ type: "check_agent", runs_in: agent.runs_in }).then(
+  const [busy, setBusy] = useState<"checking" | "signing in" | null>(null);
+  const [result, setResult] = useState<{ readonly ready: boolean; readonly message: string; readonly signIn: boolean } | null>(null);
+  /** Checks the agent, or signs it in and then checks it. */
+  const run = (request: Request, doing: "checking" | "signing in"): void => {
+    setBusy(doing);
+    ask(request).then(
       (response) => {
-        setChecking(false);
+        setBusy(null);
         if (response.type === "checked") {
-          setResult({ ready: response.ready, message: response.message });
+          setResult({ ready: response.ready, message: response.message, signIn: response.sign_in });
         }
       },
       (failure: unknown) => {
-        setChecking(false);
-        setResult({ ready: false, message: problem(failure) });
+        setBusy(null);
+        setResult({ ready: false, message: problem(failure), signIn: false });
       }
     );
+  };
+  const check = (): void => {
+    run({ type: "check_agent", runs_in: agent.runs_in }, "checking");
   };
   const checked = useRef(false);
   useEffect(() => {
@@ -98,8 +102,8 @@ function AgentRow({
         {wsl && <span className="text-xs text-muted-foreground">on {where(agent.runs_in)}</span>}
         {!alone && agent.chosen && <span className="text-xs text-muted-foreground">· runs there</span>}
         {agent.chosen ? (
-          <Button type="button" variant="ghost" size="xs" className="ml-auto" disabled={checking} onClick={check}>
-            {checking ? "Checking…" : "Check"}
+          <Button type="button" variant="ghost" size="xs" className="ml-auto" disabled={busy !== null} onClick={check}>
+            {busy === "checking" ? "Checking…" : "Check"}
           </Button>
         ) : (
           <Button type="button" variant="ghost" size="xs" className="ml-auto" onClick={onChoose}>
@@ -107,7 +111,21 @@ function AgentRow({
           </Button>
         )}
       </div>
-      {result !== null && <p className={result.ready ? "text-xs text-emerald-700 dark:text-emerald-400" : "text-xs text-destructive"}>{result.message}</p>}
+      {busy === "signing in" && <p className="text-xs text-muted-foreground">Signing in: finish in the browser window that opened.</p>}
+      {busy === null && result !== null && <p className={result.ready ? "text-xs text-emerald-700 dark:text-emerald-400" : "text-xs text-destructive"}>{result.message}</p>}
+      {result?.signIn === true && (
+        <Button
+          type="button"
+          size="sm"
+          className="mt-1"
+          disabled={busy !== null}
+          onClick={() => {
+            run({ type: "sign_in", runs_in: agent.runs_in }, "signing in");
+          }}
+        >
+          Sign in
+        </Button>
+      )}
     </li>
   );
 }

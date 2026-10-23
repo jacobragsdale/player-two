@@ -207,3 +207,68 @@ async fn cursor_is_installed_from_here_on_windows_only() {
     };
     assert!(!places.wsl, "there is no WSL here");
 }
+
+#[tokio::test]
+async fn an_agent_that_needs_signing_in_is_signed_in_over_acp() {
+    let hub = Hub::start().await;
+    let alice = hub.joined("alice").await;
+    let marker = hub.folder("alice").join("signed-in");
+    let agent = |args: &[&str]| Settings {
+        custom_agent: Some(
+            std::iter::once(env!("CARGO_BIN_EXE_fake-acp-agent"))
+                .chain(args.iter().copied())
+                .map(str::to_owned)
+                .collect(),
+        ),
+        ..Settings::default()
+    };
+    let files = Files::new(hub.folder("alice"));
+    let marker_path = marker.to_string_lossy().into_owned();
+    files
+        .write("settings.json", &agent(&["--needs-sign-in", &marker_path]))
+        .expect("written");
+
+    let checked = alice
+        .handle(Request::CheckAgent {
+            runs_in: RunsIn::Windows,
+        })
+        .await;
+    let Ok(Response::Checked {
+        ready: false,
+        sign_in: true,
+        message,
+    }) = checked
+    else {
+        panic!("the check says to sign in, not {checked:?}");
+    };
+    assert!(message.contains("needs signing in"));
+    let signed = alice
+        .handle(Request::SignIn {
+            runs_in: RunsIn::Windows,
+        })
+        .await;
+    assert!(
+        matches!(signed, Ok(Response::Checked { ready: true, .. })),
+        "signing in, then checking, finds it ready: {signed:?}"
+    );
+    assert!(marker.exists(), "the agent was asked to authenticate");
+
+    // An agent with no way to sign in over ACP is left to its own command.
+    files
+        .write("settings.json", &agent(&["--no-sign-in"]))
+        .expect("written");
+    let signed = alice
+        .handle(Request::SignIn {
+            runs_in: RunsIn::Windows,
+        })
+        .await;
+    let Ok(Response::Checked {
+        ready: false,
+        sign_in: false,
+        message,
+    }) = signed
+    else {
+        panic!("the agent cannot be signed in from here, not {signed:?}");
+    };
+    assert!(message.contains("run `agent login`"), "{message}");
+}

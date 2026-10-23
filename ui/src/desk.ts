@@ -343,6 +343,10 @@ kind: AgentKind } |
 { type: "check_agent"; 
 /**  Windows, or a WSL distro. */
 runs_in: RunsIn } | 
+/**  Signs the agent at a system in over ACP, which for Cursor opens the browser, then checks it. */
+{ type: "sign_in"; 
+/**  Windows, or a WSL distro. */
+runs_in: RunsIn } | 
 /**
  *  Asks what the approval card for a place needs: where it may run, and whether a git
  *  checkout has changes not committed.
@@ -388,13 +392,13 @@ export type Response =
 /**  The answer to [`Request::Hello`]. */
 ({ type: "hello"; 
 /**  The version the hub, the app and the desk all share. */
-version: string }) & { choices?: never; dirty?: never; joined?: never; message?: never; ok?: never; output?: never; ready?: never; runs_in?: never; suggested_name?: never } | 
+version: string }) & { choices?: never; dirty?: never; joined?: never; message?: never; ok?: never; output?: never; ready?: never; runs_in?: never; sign_in?: never; suggested_name?: never } | 
 /**  The answer to [`Request::Setup`]. */
 ({ type: "setup"; 
 /**  The name this machine joined under, once it has. */
 joined: PersonName | null; 
 /**  The name to offer, from the Windows user name. */
-suggested_name: string | null }) & { choices?: never; dirty?: never; message?: never; ok?: never; output?: never; ready?: never; runs_in?: never; version?: never } | 
+suggested_name: string | null }) & { choices?: never; dirty?: never; message?: never; ok?: never; output?: never; ready?: never; runs_in?: never; sign_in?: never; version?: never } | 
 /**  The answer to [`Request::Overview`]. */
 {
 	type: "overview",
@@ -414,21 +418,23 @@ choices: RunsIn[];
 /**  Where it runs unless the owner picks another. */
 runs_in: RunsIn; 
 /**  Whether a git checkout has changes not committed, which an edit would run among. */
-dirty: boolean }) & { joined?: never; message?: never; ok?: never; output?: never; ready?: never; suggested_name?: never; version?: never } | 
+dirty: boolean }) & { joined?: never; message?: never; ok?: never; output?: never; ready?: never; sign_in?: never; suggested_name?: never; version?: never } | 
 /**  The answer to [`Request::InstallCursor`]. */
 ({ type: "installed"; 
 /**  Whether the installer said it succeeded. */
 ok: boolean; 
 /**  The end of what it printed. */
-output: string }) & { choices?: never; dirty?: never; joined?: never; message?: never; ready?: never; runs_in?: never; suggested_name?: never; version?: never } | 
-/**  The answer to [`Request::CheckAgent`]. */
+output: string }) & { choices?: never; dirty?: never; joined?: never; message?: never; ready?: never; runs_in?: never; sign_in?: never; suggested_name?: never; version?: never } | 
+/**  The answer to [`Request::CheckAgent`] and [`Request::SignIn`]. */
 ({ type: "checked"; 
 /**  Whether the agent opened a session. */
 ready: boolean; 
 /**  What was found, in words. */
-message: string }) & { choices?: never; dirty?: never; joined?: never; ok?: never; output?: never; runs_in?: never; suggested_name?: never; version?: never } | 
+message: string; 
+/**  Whether the agent says it must be signed in, so that Sign in is offered. */
+sign_in: boolean }) & { choices?: never; dirty?: never; joined?: never; ok?: never; output?: never; runs_in?: never; suggested_name?: never; version?: never } | 
 /**  The request was done, and there is nothing more to say. */
-({ type: "done" }) & { choices?: never; dirty?: never; joined?: never; message?: never; ok?: never; output?: never; ready?: never; runs_in?: never; suggested_name?: never; version?: never };
+({ type: "done" }) & { choices?: never; dirty?: never; joined?: never; message?: never; ok?: never; output?: never; ready?: never; runs_in?: never; sign_in?: never; suggested_name?: never; version?: never };
 
 /**  How a run stands. */
 export type RunState = 

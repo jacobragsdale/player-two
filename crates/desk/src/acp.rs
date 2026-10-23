@@ -2,12 +2,14 @@
 //! does reported as activity, and each permission it asks for passed up to be decided.
 
 use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Duration;
 
 use agent_client_protocol::schema::ProtocolVersion;
 use agent_client_protocol::schema::v1::{
-    CancelNotification, ContentBlock, InitializeRequest, NewSessionRequest, PermissionOptionKind,
-    PromptRequest, RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
-    SelectedPermissionOutcome, SessionNotification, SessionUpdate, StopReason, TextContent,
+    AuthMethod, AuthenticateRequest, CancelNotification, ContentBlock, InitializeRequest,
+    NewSessionRequest, PermissionOptionKind, PromptRequest, RequestPermissionOutcome,
+    RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome,
+    SessionNotification, SessionUpdate, StopReason, TextContent,
 };
 use agent_client_protocol::{Agent, ByteStreams, Client, ConnectionTo, ErrorCode};
 use player_two_core::event::Activity;
@@ -75,6 +77,78 @@ pub fn sign_in(kind: AgentKind) -> &'static str {
     }
 }
 
+/// The agent says it must be signed in before it does anything.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NeedsSignIn(pub AgentKind);
+
+impl std::fmt::Display for NeedsSignIn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} needs signing in: press Sign in in Settings, or {}",
+            self.0.label(),
+            sign_in(self.0)
+        )
+    }
+}
+
+impl std::error::Error for NeedsSignIn {}
+
+/// How signing in went.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SignedIn {
+    /// The agent signed in.
+    Done,
+    /// The agent offers no way to sign in over ACP; its own command does it.
+    NotOffered,
+}
+
+/// How long signing in, in the browser the agent opened, may take.
+const SIGNING_IN: Duration = Duration::from_secs(300);
+
+/// Starts the agent and signs it in over ACP, with the way it offers: `cursor_login` for Cursor,
+/// which opens the browser. An agent that offers none is left to its own command.
+pub async fn sign_in_over_acp(agent: &Found, folder: &str) -> anyhow::Result<SignedIn> {
+    let (mut running, stdin, stdout) = process::start(agent, folder)?;
+    let kind = agent.kind;
+    let transport = ByteStreams::new(stdin.compat_write(), stdout.compat());
+    let signing = Client.connect_with(transport, async move |connection: ConnectionTo<Agent>| {
+        let initialized = connection
+            .send_request(InitializeRequest::new(ProtocolVersion::V1))
+            .block_task()
+            .await?;
+        // A terminal method is the agent's own command, which the person runs themselves.
+        let offered: Vec<&AuthMethod> = initialized
+            .auth_methods
+            .iter()
+            .filter(|method| matches!(method, AuthMethod::Agent(_)))
+            .collect();
+        let method = offered
+            .iter()
+            .find(|method| method.id().to_string() == "cursor_login")
+            .or_else(|| offered.first());
+        let Some(method) = method else {
+            return Ok(SignedIn::NotOffered);
+        };
+        connection
+            .send_request(AuthenticateRequest::new(method.id().clone()))
+            .block_task()
+            .await?;
+        Ok(SignedIn::Done)
+    });
+    let signed = tokio::time::timeout(SIGNING_IN, signing).await;
+    let last = running.last_errors();
+    let _ = running.stop().await;
+    match signed {
+        Ok(Ok(signed)) => Ok(signed),
+        Ok(Err(error)) => Err(explain(kind, &error, &last)),
+        Err(_) => Err(anyhow::anyhow!(
+            "{} was not signed in after five minutes",
+            kind.label()
+        )),
+    }
+}
+
 /// What an agent's error says, in words for the person.
 fn explain(
     kind: AgentKind,
@@ -82,7 +156,7 @@ fn explain(
     last_errors: &[String],
 ) -> anyhow::Error {
     if error.code == ErrorCode::AuthRequired {
-        return anyhow::anyhow!("{} needs signing in: {}", kind.label(), sign_in(kind));
+        return NeedsSignIn(kind).into();
     }
     let detail = error
         .data

@@ -334,23 +334,28 @@ impl Desk {
                     return Ok(Response::Checked {
                         ready: false,
                         message: "no agent is installed there".to_owned(),
+                        sign_in: false,
                     });
                 };
-                let (said, _heard) = tokio::sync::mpsc::unbounded_channel();
-                let checked = match acp::Session::open(agent, &agent.home, said).await {
-                    Ok(session) => {
-                        let _ = session.stop().await;
-                        Response::Checked {
-                            ready: true,
-                            message: format!("{} is ready", agent.kind.label()),
-                        }
-                    }
-                    Err(error) => Response::Checked {
+                Ok(check(agent).await)
+            }
+            Request::SignIn { runs_in } => {
+                let found = self.look(Where::At(runs_in.clone())).await?.agents;
+                let chosen = self.settings()?.agents.get(&runs_in).copied();
+                let agent = agents::for_system(&found, &runs_in, chosen)
+                    .context("no agent is installed there")?;
+                match acp::sign_in_over_acp(agent, &agent.home).await? {
+                    acp::SignedIn::Done => Ok(check(agent).await),
+                    acp::SignedIn::NotOffered => Ok(Response::Checked {
                         ready: false,
-                        message: format!("{error:#}"),
-                    },
-                };
-                Ok(checked)
+                        message: format!(
+                            "{} cannot be signed in from here: {}",
+                            agent.kind.label(),
+                            acp::sign_in(agent.kind)
+                        ),
+                        sign_in: false,
+                    }),
+                }
             }
             Request::Approval { place } => self.approval(&place).await,
             Request::Approve {
@@ -938,6 +943,26 @@ impl Desk {
                 }
             }
         }
+    }
+}
+
+/// Starts an agent and opens a session, to see that it is installed and signed in.
+async fn check(agent: &agents::Found) -> Response {
+    let (said, _heard) = tokio::sync::mpsc::unbounded_channel();
+    match acp::Session::open(agent, &agent.home, said).await {
+        Ok(session) => {
+            let _ = session.stop().await;
+            Response::Checked {
+                ready: true,
+                message: format!("{} is ready", agent.kind.label()),
+                sign_in: false,
+            }
+        }
+        Err(error) => Response::Checked {
+            ready: false,
+            message: format!("{error:#}"),
+            sign_in: error.downcast_ref::<acp::NeedsSignIn>().is_some(),
+        },
     }
 }
 

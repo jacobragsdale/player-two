@@ -28,7 +28,7 @@ Shared folders are picked with the folder dialog, setting up an agent is part of
   - Claude Code: steps to copy, `npm install -g @agentclientprotocol/claude-agent-acp`, and a note that it needs Node.
   - Half installed: the Cursor editor (`cursor` on the `PATH`) without its CLI, or `claude` without the adapter, gets a line saying what is missing.
   - Someone with a WSL distro, not counting Docker Desktop's, sees one collapsed line: install an agent inside the distro, with Cursor's `curl https://cursor.com/install -fsS | bash` to copy, then press Look again. The README says the same.
-- [ ] **P6-7 Signing in over ACP.** A Sign in button starts the agent and, when its `initialize` offers an auth method, calls `authenticate` with it (`cursor_login` for Cursor), which opens the browser. The setup check uses the same. An agent that offers none shows its sign-in command, as now.
+- [x] **P6-7 Signing in over ACP.** A Sign in button starts the agent and, when its `initialize` offers an auth method, calls `authenticate` with it (`cursor_login` for Cursor), which opens the browser. The setup check uses the same. An agent that offers none shows its sign-in command, as now.
 - [ ] **P6-8 People.**
   - A direct chat's header shows whether the person is here, "last seen 2 h ago" when not, and the places they share.
   - The People list puts the people you have messaged first, most recent first, then everyone else by name.

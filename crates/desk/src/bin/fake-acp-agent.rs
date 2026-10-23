@@ -10,16 +10,21 @@
 //! - `echo`: answers with the whole prompt it was given.
 //!
 //! Every turn that does not fail ends with an answer saying what it did.
+//!
+//! It offers a way to sign in over ACP, `fake-login`, which always works. Started with
+//! `--needs-sign-in <file>`, it will not open a session until signed in, which writes the file;
+//! with `--no-sign-in`, it offers no way to sign in.
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use agent_client_protocol::schema::v1::{
-    AgentCapabilities, CancelNotification, ContentBlock, ContentChunk, Diff, InitializeRequest,
-    InitializeResponse, NewSessionRequest, NewSessionResponse, PermissionOption,
-    PermissionOptionKind, PromptRequest, PromptResponse, RequestPermissionOutcome,
-    RequestPermissionRequest, SessionNotification, SessionUpdate, StopReason, TextContent,
-    ToolCall, ToolCallContent, ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields, ToolKind,
+    AgentCapabilities, AuthMethod, AuthMethodAgent, AuthenticateRequest, AuthenticateResponse,
+    CancelNotification, ContentBlock, ContentChunk, Diff, InitializeRequest, InitializeResponse,
+    NewSessionRequest, NewSessionResponse, PermissionOption, PermissionOptionKind, PromptRequest,
+    PromptResponse, RequestPermissionOutcome, RequestPermissionRequest, SessionNotification,
+    SessionUpdate, StopReason, TextContent, ToolCall, ToolCallContent, ToolCallStatus,
+    ToolCallUpdate, ToolCallUpdateFields, ToolKind,
 };
 use agent_client_protocol::{Agent, Client, ConnectionTo, Error, Stdio};
 use tokio::sync::Notify;
@@ -177,20 +182,50 @@ async fn turn(
 async fn main() -> Result<(), Error> {
     let cancelled = Arc::new(Notify::new());
     let on_cancel = Arc::clone(&cancelled);
+    let args: Vec<String> = std::env::args().collect();
+    let offers_sign_in = !args.iter().any(|arg| arg == "--no-sign-in");
+    // The file that says it was signed in, when it must be before a session opens.
+    let signed_in = args
+        .iter()
+        .position(|arg| arg == "--needs-sign-in")
+        .and_then(|at| args.get(at + 1))
+        .map(std::path::PathBuf::from);
+    let (signing_in, opening) = (signed_in.clone(), signed_in);
     Agent
         .builder()
         .name("fake-acp-agent")
         .on_receive_request(
             async move |initialize: InitializeRequest, responder, _connection| {
+                let methods = if offers_sign_in {
+                    vec![AuthMethod::Agent(AuthMethodAgent::new(
+                        "fake-login",
+                        "Fake login",
+                    ))]
+                } else {
+                    Vec::new()
+                };
                 responder.respond(
                     InitializeResponse::new(initialize.protocol_version)
-                        .agent_capabilities(AgentCapabilities::new()),
+                        .agent_capabilities(AgentCapabilities::new())
+                        .auth_methods(methods),
                 )
             },
             agent_client_protocol::on_receive_request!(),
         )
         .on_receive_request(
+            async move |_authenticate: AuthenticateRequest, responder, _connection| {
+                if let Some(file) = &signing_in {
+                    std::fs::write(file, "signed in").map_err(|_| Error::internal_error())?;
+                }
+                responder.respond(AuthenticateResponse::new())
+            },
+            agent_client_protocol::on_receive_request!(),
+        )
+        .on_receive_request(
             async move |_new: NewSessionRequest, responder, _connection| {
+                if opening.as_ref().is_some_and(|file| !file.exists()) {
+                    return responder.respond_with_error(Error::auth_required());
+                }
                 responder.respond(NewSessionResponse::new(SESSION))
             },
             agent_client_protocol::on_receive_request!(),
