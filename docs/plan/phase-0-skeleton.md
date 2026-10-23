@@ -21,7 +21,7 @@ Every part exists, does nothing yet, and is checked on every push. Read [`../pla
   - `crates/desk/src/ui.rs` has `Request`, `Response` and `Event`, with one `Hello` request to start.
   - A test writes `ui/src/desk.ts` with `specta-typescript`, and fails when the file is out of date.
   - The app's `desk` command passes requests to the desk, and the window shows the desk's hello.
-- [ ] **P0-6 Windows CI.** In `.github/workflows/ci.yml`:
+- [x] **P0-6 Windows CI.** In `.github/workflows/ci.yml`:
   - Remove the `hashFiles` guards.
   - Build the NSIS installer with `cargo tauri build --debug` and upload it as an artifact.
 - [ ] **P0-7 (workstation)** Download the CI installer and install it on a work machine without admin rights. The window opens and shows the desk's hello. Note what SmartScreen says.
