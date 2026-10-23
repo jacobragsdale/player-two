@@ -218,9 +218,12 @@ function Choice({ kind, onKind }: { readonly kind: AgentKind; readonly onKind: (
 }
 
 /** What is installed in part: the Cursor editor without its agent, or Claude Code without its adapter. */
-function HalfInstalled({ kinds }: { readonly kinds: readonly AgentKind[] }): JSX.Element {
+function HalfInstalled({ kinds }: { readonly kinds: readonly AgentKind[] }): JSX.Element | null {
+  if (kinds.length === 0) {
+    return null;
+  }
   return (
-    <>
+    <div className="mb-2 space-y-1">
       {kinds.includes("cursor") && <p className="text-sm text-warn">The Cursor editor is installed, but not Cursor&rsquo;s agent, which is what Player Two runs. Set up Cursor installs it.</p>}
       {kinds.includes("claude") && (
         <div className="text-sm text-warn">
@@ -228,7 +231,7 @@ function HalfInstalled({ kinds }: { readonly kinds: readonly AgentKind[] }): JSX
           <Command text={CLAUDE_INSTALL} />
         </div>
       )}
-    </>
+    </div>
   );
 }
 

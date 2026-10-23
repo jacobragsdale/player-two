@@ -59,7 +59,7 @@ function FolderRow({ folder, wsl, onRename, onStop }: { readonly folder: SharedF
     <li className="flex items-center gap-2 py-1">
       {editing === null ? (
         <>
-          <span className="font-medium">{folder.name}</span>
+          <span className="font-medium whitespace-nowrap">{folder.name}</span>
           <Button
             type="button"
             variant="ghost"
