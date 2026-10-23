@@ -5,20 +5,28 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod notify;
+mod update;
 
 use player_two_desk::Desk;
 use player_two_desk::ui::{Event, Request, Response};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{App, Emitter, Manager, State, WindowEvent};
+use tauri::{App, AppHandle, Emitter, Manager, State, WindowEvent};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 
 /// The argument start at login passes, so the app starts in the tray rather than in front.
 const MINIMIZED: &str = "--minimized";
 
-/// Passes one request from the window to the desk. This is the only command the webview may call.
+/// Passes one request from the window to the desk, but for an update, which only the app can
+/// install. This is the only command the webview may call.
 #[tauri::command]
-async fn desk(request: Request, desk: State<'_, Desk>) -> Result<Response, String> {
+async fn desk(app: AppHandle, request: Request, desk: State<'_, Desk>) -> Result<Response, String> {
+    if request == Request::Update {
+        return update::install(&app, &desk)
+            .await
+            .map(|()| Response::Done)
+            .map_err(|error| format!("{error:#}"));
+    }
     desk.handle(request).await
 }
 
@@ -28,6 +36,7 @@ fn main() -> anyhow::Result<()> {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             notify::bring_forward(app);
         }))
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
             Some(vec![MINIMIZED]),

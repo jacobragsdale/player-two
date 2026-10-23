@@ -169,6 +169,7 @@ impl Desk {
                 self.channels_changed(Some(ChatId::Channel(name))).await?;
                 Ok(Response::Done)
             }
+            Request::Update => anyhow::bail!("updates are installed by the app, not the desk"),
             Request::LeaveChannel { name } => {
                 let name = ChannelName::new(name)?;
                 self.hub()?.membership(&name, false).await?;
@@ -176,6 +177,11 @@ impl Desk {
                 Ok(Response::Done)
             }
         }
+    }
+
+    /// The address of the hub this machine joined, if it has.
+    pub fn hub_address(&self) -> anyhow::Result<Option<String>> {
+        Ok(self.inner.files.identity()?.map(|identity| identity.hub))
     }
 
     fn hub(&self) -> anyhow::Result<Hub> {

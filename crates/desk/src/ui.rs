@@ -68,6 +68,8 @@ pub enum Request {
         /// Its name, without `#`.
         name: String,
     },
+    /// Installs the hub's version of the app, then restarts. The app does this, not the desk.
+    Update,
 }
 
 /// The desk's answer to one [`Request`].

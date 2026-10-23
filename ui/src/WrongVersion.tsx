@@ -1,14 +1,38 @@
-/** What the window shows instead of the chats when the hub runs another version than this app. */
+/** What the window shows instead of the chats when the hub runs another version than this app: the two versions, and the button that installs the hub's. */
 
+import { useState } from "react";
 import type { JSX } from "react";
 
+import { Button } from "@/components/ui/button";
+
+import { ask, problem } from "./deskClient.ts";
+
 export function WrongVersion({ hub, app }: { readonly hub: string; readonly app: string }): JSX.Element {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const update = (): void => {
+    setBusy(true);
+    setError("");
+    // When it works the app restarts, so only a failure comes back.
+    ask({ type: "update" }).catch((failure: unknown) => {
+      setBusy(false);
+      setError(problem(failure));
+    });
+  };
   return (
     <main className="mx-auto flex w-96 max-w-[calc(100vw-2rem)] flex-col gap-3 pt-[15vh]">
       <h1 className="text-xl font-bold">Player Two needs updating</h1>
       <p>
-        Your team&rsquo;s hub runs version {hub}, and this app is version {app}. They must match before you can chat.
+        Your team&rsquo;s hub runs version {hub}, and this app is version {app}. Update to chat again; it takes a minute, and Player Two opens again by itself.
       </p>
+      <Button type="button" className="self-start" disabled={busy} onClick={update}>
+        {busy ? "Updating…" : `Update to ${hub}`}
+      </Button>
+      {error !== "" && (
+        <p role="alert" className="text-destructive">
+          {error}
+        </p>
+      )}
     </main>
   );
 }

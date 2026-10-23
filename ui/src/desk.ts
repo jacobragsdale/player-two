@@ -201,7 +201,9 @@ name: string } |
 /**  Leaves a channel. */
 { type: "leave_channel"; 
 /**  Its name, without `#`. */
-name: string };
+name: string } | 
+/**  Installs the hub's version of the app, then restarts. The app does this, not the desk. */
+{ type: "update" };
 
 /**  The desk's answer to one [`Request`]. */
 export type Response = 
