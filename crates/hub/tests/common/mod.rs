@@ -8,6 +8,7 @@ use std::sync::Arc;
 use player_two_hub::app::{AppState, Config, router};
 use player_two_hub::clock::Clock;
 use player_two_hub::db::Db;
+use player_two_hub::stream::Streams;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -53,6 +54,7 @@ impl Hub {
                 admin_token: ADMIN_TOKEN.to_owned(),
             }),
             clock: clock.clone(),
+            streams: Arc::new(Streams::default()),
         };
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
@@ -118,5 +120,91 @@ impl Hub {
             )
             .await;
         answer.body["token"].as_str().expect("a token").to_owned()
+    }
+}
+
+/// One message read off a stream.
+#[derive(Debug)]
+pub struct Line {
+    pub kind: String,
+    pub data: Value,
+}
+
+/// An open `GET /stream`.
+pub struct Lines {
+    response: reqwest::Response,
+    buffer: String,
+}
+
+impl Lines {
+    /// The next message, waiting up to five seconds for it.
+    pub async fn next(&mut self) -> Line {
+        tokio::time::timeout(std::time::Duration::from_secs(5), self.read())
+            .await
+            .expect("a message arrives in time")
+    }
+
+    /// Whether the hub has ended the stream, waiting up to five seconds.
+    pub async fn ended(&mut self) -> bool {
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                match self.response.chunk().await {
+                    Ok(Some(_)) => {}
+                    Ok(None) | Err(_) => return true,
+                }
+            }
+        })
+        .await
+        .unwrap_or(false)
+    }
+
+    async fn read(&mut self) -> Line {
+        loop {
+            if let Some(end) = self.buffer.find("\n\n") {
+                let block: String = self.buffer.drain(..end + 2).collect();
+                let mut kind = "message".to_owned();
+                let mut data = String::new();
+                for line in block.lines() {
+                    if let Some(value) = line.strip_prefix("event:") {
+                        kind = value.trim().to_owned();
+                    } else if let Some(value) = line.strip_prefix("data:") {
+                        data.push_str(value.trim_start());
+                    }
+                }
+                if data.is_empty() {
+                    continue; // A keep-alive comment.
+                }
+                return Line {
+                    kind,
+                    data: serde_json::from_str(&data).expect("JSON data"),
+                };
+            }
+            let chunk = self
+                .response
+                .chunk()
+                .await
+                .expect("the stream reads")
+                .expect("the stream stays open");
+            self.buffer.push_str(&String::from_utf8_lossy(&chunk));
+        }
+    }
+}
+
+impl Hub {
+    /// Opens a stream, resuming after `after` when given.
+    pub async fn stream(&self, token: &str, after: Option<i64>) -> Lines {
+        let mut request = self
+            .client
+            .get(format!("{}/stream", self.base))
+            .bearer_auth(token);
+        if let Some(after) = after {
+            request = request.header("last-event-id", after.to_string());
+        }
+        let response = request.send().await.expect("the hub answers");
+        assert_eq!(response.status().as_u16(), 200);
+        Lines {
+            response,
+            buffer: String::new(),
+        }
     }
 }

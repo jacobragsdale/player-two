@@ -3,6 +3,8 @@
 use anyhow::Context;
 use player_two_core::api::ChannelInfo;
 use player_two_core::event::{Body, Event, EventId};
+use std::collections::HashMap;
+
 use player_two_core::names::{ChannelName, ChatId, PersonName};
 use rusqlite::{Connection, OptionalExtension, Row};
 use serde_json::{Value, json};
@@ -203,6 +205,35 @@ pub fn page(
         events.push(read_event(row)?);
     }
     events.reverse();
+    Ok(events)
+}
+
+/// Every event after `after` that `who` may see now, oldest first.
+pub fn events_after(
+    connection: &Connection,
+    after: EventId,
+    who: &PersonName,
+) -> anyhow::Result<Vec<Event>> {
+    let mut statement = connection.prepare(&format!(
+        "SELECT {EVENT_COLUMNS} FROM events WHERE id > ?1 ORDER BY id"
+    ))?;
+    let mut rows = statement.query([after.0])?;
+    let mut allowed: HashMap<ChatId, bool> = HashMap::new();
+    let mut events = Vec::new();
+    while let Some(row) = rows.next()? {
+        let event = read_event(row)?;
+        let may = match allowed.get(&event.chat) {
+            Some(may) => *may,
+            None => {
+                let may = may_use(connection, &event.chat, who)?;
+                allowed.insert(event.chat.clone(), may);
+                may
+            }
+        };
+        if may {
+            events.push(event);
+        }
+    }
     Ok(events)
 }
 

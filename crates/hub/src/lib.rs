@@ -8,3 +8,4 @@ pub mod clock;
 pub mod db;
 pub mod rules;
 pub mod store;
+pub mod stream;

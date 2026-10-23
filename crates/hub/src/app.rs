@@ -22,6 +22,7 @@ use crate::clock::Clock;
 use crate::db::Db;
 use crate::rules::{self, Verdict};
 use crate::store;
+use crate::stream::{self, Streams};
 
 /// What the hub is told when it starts.
 #[derive(Debug, Clone)]
@@ -41,6 +42,8 @@ pub struct AppState {
     pub config: Arc<Config>,
     /// The time.
     pub clock: Clock,
+    /// The open streams.
+    pub streams: Arc<Streams>,
 }
 
 /// All of the hub's routes.
@@ -52,6 +55,7 @@ pub fn router(state: AppState) -> Router {
         .route("/channels/{name}/leave", post(leave_channel))
         .route("/chats/{chat}/events", get(chat_events))
         .route("/events", post(post_event))
+        .route("/stream", get(stream::stream))
         .with_state(state)
 }
 
@@ -345,10 +349,14 @@ async fn post_event(
         })
         .await?;
     match stored {
-        Ok(event) => Ok(Json(Posted {
-            id: event.id,
-            ts: event.ts,
-        })),
+        Ok(event) => {
+            let posted = Posted {
+                id: event.id,
+                ts: event.ts,
+            };
+            state.streams.publish(event);
+            Ok(Json(posted))
+        }
         Err(reason) => Err(Refusal::new(StatusCode::FORBIDDEN, reason)),
     }
 }

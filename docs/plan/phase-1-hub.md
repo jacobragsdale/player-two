@@ -19,7 +19,7 @@ The whole hub, tested end to end and ready to deploy. [`protocol.md`](protocol.m
 - [x] **P1-5 Events.**
   - `POST /events` enforces the "who may post it" column of the [events table](protocol.md#events). That includes `run.answer` from the asker only when the run's `steps_by` is `asker`.
   - `GET /chats/{chat}/events` returns pages.
-- [ ] **P1-6 The stream.**
+- [x] **P1-6 The stream.**
   - `GET /stream` sends events and presence, resumes with `Last-Event-ID`, and sends keep-alives.
   - A person is here while a stream is open.
 - [ ] **P1-7 Places and people.** `PUT /places` and `GET /people`.
