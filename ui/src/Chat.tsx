@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 
 import { LeaveChannel } from "./Channels.tsx";
 import { Composer } from "./Composer.tsx";
-import type { ChatId, ChatView, Mode, Person } from "./desk.ts";
+import type { ChatId, ChatView, Mode, Person, RunView } from "./desk.ts";
 import { ask, problem } from "./deskClient.ts";
 import { useChat } from "./hooks.ts";
 import { Message } from "./Message.tsx";
@@ -29,6 +29,13 @@ interface Props {
   readonly people: readonly Person[];
   /** The person's places with a run going now. */
   readonly busy: readonly string[];
+}
+
+/** Whether a follow-up written in this thread now goes to the person's own agent: the newest run of what they asked here is theirs. */
+export function followsOwnRun(view: ChatView, me: string): boolean {
+  const runs = view.items.filter((item) => item.author === me).flatMap((item) => item.runs);
+  const newest = runs.reduce<RunView | null>((latest, run) => (latest === null || run.id > latest.id ? run : latest), null);
+  return newest?.mine ?? false;
 }
 
 /** How long ago a time was, in round words: "just now", "5 min ago", "2 h ago", "3 days ago". */
@@ -166,7 +173,7 @@ export function Chat({ chat, me, thread, onThread, onClose, onLeft, mode, people
         chat={chat}
         thread={thread}
         me={me}
-        ownThread={thread !== null && view.items.some((item) => item.author === me && item.runs.some((run) => run.mine))}
+        ownThread={thread !== null && followsOwnRun(view, me)}
         mode={mode}
         people={people}
         members={view.members}

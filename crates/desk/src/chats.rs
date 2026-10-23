@@ -253,7 +253,9 @@ impl Chats {
             title,
             body: shortened(&message.text),
             thread: event.thread,
-            follows,
+            // A direct message or a tag is worth a notification whatever runs; only a bare
+            // follow-up is left quiet when keep going runs it.
+            follows: follows.filter(|_| !direct && !tagged),
         })
     }
 
