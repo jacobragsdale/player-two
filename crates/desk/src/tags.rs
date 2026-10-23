@@ -1,5 +1,6 @@
 //! Reading tags in what a person typed: `@person` for their machine, `@person/place` for one of
-//! their places. Only people who have joined, and places they advertise, count.
+//! their places. Only people who have joined, and places they advertise, count: someone with no
+//! agent advertises none, not even their machine.
 
 use player_two_core::api::Person;
 use player_two_core::event::Tag;
@@ -53,10 +54,14 @@ pub fn read(text: &str, people: &[Person]) -> Vec<Tag> {
         let place = match place {
             None => PlaceName::machine(),
             Some(place) => match PlaceName::new(place) {
-                Ok(place) if known.places.iter().any(|offered| offered.name == place) => place,
-                _ => continue,
+                Ok(place) => place,
+                Err(_) => continue,
             },
         };
+        // Someone with no agent advertises no machine, so a tag of them reaches nothing.
+        if !known.places.iter().any(|offered| offered.name == place) {
+            continue;
+        }
         let tag = Tag { person, place };
         if !tags.contains(&tag) {
             tags.push(tag);
@@ -96,6 +101,7 @@ mod tests {
         let people = [
             person("alice", &["machine", "uploader"]),
             person("bob", &["machine"]),
+            person("carol", &[]),
         ];
         let read = |text: &str| -> Vec<String> {
             read(text, &people)
@@ -111,5 +117,9 @@ mod tests {
         );
         assert_eq!(read("mail me at alice@example.com"), Vec::<String>::new());
         assert_eq!(read("@carol, @alice/billing, @Alice"), Vec::<String>::new());
+        assert_eq!(
+            read("@dave and @carol, who has no agent"),
+            Vec::<String>::new()
+        );
     }
 }

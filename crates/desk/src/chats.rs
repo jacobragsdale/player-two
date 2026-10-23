@@ -1007,13 +1007,14 @@ mod tests {
             kind: player_two_core::api::PlaceKind::Machine,
         });
         chats.set_people(vec![person("alice"), bob, person("carol")]);
-        chats.apply(message(
-            1,
-            &ops,
-            "alice",
-            None,
-            "@carol, @alice, @bob/billing and @dave: help",
-        ));
+        let text = "@carol, @alice, @bob/billing and @dave: help";
+        let mut sent = message(1, &ops, "alice", None, text);
+        // The tags are read as the sender's desk reads them.
+        if let Body::Message(body) = &mut sent.body {
+            body.tags = crate::tags::read(text, chats.people());
+            assert!(body.tags.is_empty(), "none of them reaches a place");
+        }
+        chats.apply(sent);
         assert_eq!(
             chats.view(&ops, None).items[0].unknown,
             [
