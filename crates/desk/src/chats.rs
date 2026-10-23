@@ -263,6 +263,12 @@ impl Chats {
         self.run_of(chat, run).map(|(_, _, asker)| asker)
     }
 
+    /// Whose machine a run is on.
+    #[must_use]
+    pub fn owner_of(&self, chat: &ChatId, run: EventId) -> Option<PersonName> {
+        self.run_of(chat, run).map(|(owner, _, _)| owner)
+    }
+
     /// A run's owner, how it was accepted, and who asked for it.
     fn run_of(&self, chat: &ChatId, run: EventId) -> Option<(PersonName, RunAccepted, PersonName)> {
         let events = self.events.get(chat)?;

@@ -279,3 +279,151 @@ async fn credentials_are_masked_before_they_reach_the_chat() {
         .expect("a page");
     assert!(!page.contains("hunter2") && !page.contains("abc123"));
 }
+
+/// Every run in #ops, with the text it answers.
+async fn runs(desk: &Desk) -> Vec<(String, player_two_desk::ui::RunView)> {
+    chat(desk, CHAT, None)
+        .await
+        .items
+        .into_iter()
+        .flat_map(|item| {
+            let text = item.text.clone();
+            item.runs.into_iter().map(move |run| (text.clone(), run))
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn two_tags_at_once_run_one_at_a_time() {
+    let hub = Hub::start().await;
+    let desk = alice(&hub).await;
+    let (one, two) = tokio::join!(
+        send(&desk, "@alice be slow one", Some(Mode::Full)),
+        send(&desk, "@alice be slow two", None)
+    );
+    let ((), ()) = (one, two);
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let started = runs(&desk).await;
+    assert_eq!(
+        started.len(),
+        1,
+        "only one run holds the place: {started:?}"
+    );
+    let (_, run) = &started[0];
+    assert_eq!(
+        desk.handle(Request::Stop {
+            chat: id(CHAT),
+            thread: run.thread,
+            run: run.id
+        })
+        .await,
+        Ok(Response::Done)
+    );
+    for _ in 0..250 {
+        if runs(&desk).await[0].1.state == RunState::Stopped {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    panic!("the run did not stop");
+}
+
+#[tokio::test]
+async fn stop_pressed_while_a_run_starts_stops_it() {
+    let hub = Hub::start().await;
+    let desk = alice(&hub).await;
+    let sender = desk.clone();
+    let sending = tokio::spawn(async move {
+        sender
+            .handle(Request::Send {
+                chat: id(CHAT),
+                thread: None,
+                text: "@alice be slow".to_owned(),
+                mode: None,
+            })
+            .await
+    });
+    // Stop as soon as the run is in the chat, which is before its agent has started.
+    let mut stopped = false;
+    for _ in 0..5000 {
+        if let Some((_, run)) = runs(&desk).await.into_iter().next() {
+            let answer = desk
+                .handle(Request::Stop {
+                    chat: id(CHAT),
+                    thread: run.thread,
+                    run: run.id,
+                })
+                .await;
+            assert_eq!(answer, Ok(Response::Done));
+            stopped = true;
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    assert!(stopped, "the run showed up");
+    assert_eq!(sending.await.expect("sent"), Ok(Response::Done));
+    for _ in 0..250 {
+        if runs(&desk).await[0].1.state == RunState::Stopped {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    panic!("the run went on after Stop: {:?}", runs(&desk).await);
+}
+
+#[tokio::test]
+async fn a_folder_renamed_while_it_runs_is_still_busy() {
+    let hub = Hub::start().await;
+    let desk = alice(&hub).await;
+    let folder = tempfile::tempdir().expect("a folder");
+    let path = folder.path().join("proj");
+    std::fs::create_dir(&path).expect("made");
+    let picked = path.to_string_lossy().into_owned();
+    desk.set_picker(std::sync::Arc::new(move || {
+        let folder = picked.clone();
+        Box::pin(async move { Some(folder) })
+    }));
+    assert_eq!(desk.handle(Request::PickFolder).await, Ok(Response::Done));
+    common::until(&desk, "proj to be advertised", |overview| {
+        overview
+            .people
+            .iter()
+            .any(|person| person.name.as_str() == "alice" && person.places.len() == 2)
+    })
+    .await;
+    send(&desk, "@alice/proj be slow one", Some(Mode::Full)).await;
+    until_item(&desk, "@alice/proj be slow one", "the run", |item| {
+        item.runs
+            .first()
+            .is_some_and(|run| run.state == RunState::Working)
+    })
+    .await;
+    assert_eq!(
+        desk.handle(Request::RenameFolder {
+            name: PlaceName::new("proj").expect("a name"),
+            to: "proj2".to_owned(),
+        })
+        .await,
+        Ok(Response::Done)
+    );
+    common::until(&desk, "proj2 to be advertised", |overview| {
+        overview.people.iter().any(|person| {
+            person
+                .places
+                .iter()
+                .any(|place| place.name.as_str() == "proj2")
+        })
+    })
+    .await;
+    assert_eq!(
+        overview(&desk).await.busy,
+        [PlaceName::new("proj2").expect("a name")]
+    );
+    send(&desk, "@alice/proj2 be slow two", None).await;
+    let second = until_item(&desk, "@alice/proj2 be slow two", "the second tag", |_| {
+        true
+    })
+    .await;
+    assert!(second.runs.is_empty(), "the renamed folder is still busy");
+    assert_eq!(second.waiting.len(), 1);
+}

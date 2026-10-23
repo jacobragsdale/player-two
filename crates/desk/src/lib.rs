@@ -224,8 +224,16 @@ impl Desk {
                 Ok(Response::Done)
             }
             Request::Stop { chat, thread, run } => {
+                let owner = self
+                    .state()
+                    .chats
+                    .as_ref()
+                    .and_then(|chats| chats.owner_of(&chat, run));
                 if self.runs_going(run) {
                     self.stop_run(run, None)?;
+                } else if owner.is_some() && owner == self.me() {
+                    // A run of this machine's that is not going on has nothing to stop.
+                    anyhow::bail!("that run is not going on here");
                 } else {
                     self.post(
                         &chat,
@@ -551,7 +559,7 @@ impl Desk {
         else {
             return;
         };
-        if !self.keeps_going(run.thread, &run.place) || self.busy(&run.place).is_some() {
+        if !self.keeps_going(run.thread, &run.place) || self.busy(&run.place) {
             return;
         }
         let Body::Message(message) = &event.body else {
@@ -724,7 +732,7 @@ impl Desk {
             .and_then(|chats| chats.followed(&request))
             .filter(|run| run.owner == me && run.state != ui::RunState::Working);
         if let Some(run) = own_follow_up
-            && self.busy(&run.place).is_none()
+            && !self.busy(&run.place)
         {
             self.start_run(runs::Order {
                 request: request.clone(),
@@ -739,7 +747,7 @@ impl Desk {
             .await?;
         }
         for tag in tags.into_iter().filter(|tag| tag.person == me) {
-            if self.busy(&tag.place).is_some() {
+            if self.busy(&tag.place) {
                 // It waits, as a teammate's request would, until the place is free.
                 continue;
             }
@@ -801,7 +809,7 @@ impl Desk {
                     .any(|tag| tag.person == me && tag.place == place),
             "that is not a request of yours still waiting"
         );
-        anyhow::ensure!(self.busy(&place).is_none(), "{place} is still busy");
+        anyhow::ensure!(!self.busy(&place), "{place} is still busy");
         let text = message.text.clone();
         self.run_own(&asked, &text, place, &self.settings()?).await
     }
@@ -1009,7 +1017,7 @@ impl Desk {
                         self.tell(ui::Event::Overview);
                         // A follow-up that keep going runs at once has nothing to click.
                         let runs_by_itself = notice.as_ref().and_then(|notice| notice.follows.as_ref()).is_some_and(
-                            |(thread, place)| self.keeps_going(*thread, place) && self.busy(place).is_none(),
+                            |(thread, place)| self.keeps_going(*thread, place) && !self.busy(place),
                         );
                         if let Some(notice) = notice.filter(|_| !runs_by_itself) {
                             self.tell(ui::Event::Notify {

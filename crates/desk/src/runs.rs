@@ -102,11 +102,14 @@ pub fn preamble(
     )
 }
 
-/// A run going on at one of this machine's places.
+/// A run going on, or starting, at one of this machine's places. The place is held from the
+/// moment a run starts, so that a second cannot start beside it.
 #[derive(Debug)]
 pub(crate) struct Active {
-    pub(crate) run: EventId,
-    session: Arc<Session>,
+    /// The run, once its `run.accepted` is posted.
+    pub(crate) run: Option<EventId>,
+    /// Its session, once open.
+    session: Option<Arc<Session>>,
 }
 
 /// A step waiting for a yes or no, and who may give it.
@@ -133,6 +136,7 @@ pub(crate) struct Kept {
 /// The runs on this machine.
 #[derive(Debug, Default)]
 pub(crate) struct Runs {
+    /// The runs going on or starting, by the name their place had when they started.
     pub(crate) active: HashMap<PlaceName, Active>,
     waiting: HashMap<(EventId, String), Waiting>,
     /// Sessions kept for follow-ups, by the thread they serve.
@@ -155,34 +159,60 @@ impl Desk {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    /// Whether a run is going on here now.
+    /// Whether a run is going on here now, or starting.
     pub(crate) fn runs_going(&self, run: EventId) -> bool {
-        self.runs().active.values().any(|active| active.run == run)
+        self.runs()
+            .active
+            .values()
+            .any(|active| active.run == Some(run))
     }
 
-    /// The places with a run going, by the names they go by now.
+    /// The places with a run going or starting, by the names they go by now.
     pub(crate) fn runs_going_at(&self) -> Vec<PlaceName> {
-        self.runs().active.keys().cloned().collect()
+        let settings = self.settings().unwrap_or_default();
+        self.runs()
+            .active
+            .keys()
+            .map(|place| settings.current(place))
+            .collect()
     }
 
-    /// Whether a place has a run going.
-    pub(crate) fn busy(&self, place: &PlaceName) -> Option<EventId> {
-        let place = self.current(place);
-        self.runs().active.get(&place).map(|active| active.run)
-    }
-
-    /// The name a place goes by now, so that a request to a renamed folder's former name is the
-    /// same place as one to its new name.
-    fn current(&self, place: &PlaceName) -> PlaceName {
-        self.settings()
-            .map_or_else(|_| place.clone(), |settings| settings.current(place))
+    /// Whether a place has a run going or starting. Places are compared by the names they go by
+    /// now, so that a renamed folder is the same place under its old name and its new one.
+    pub(crate) fn busy(&self, place: &PlaceName) -> bool {
+        let settings = self.settings().unwrap_or_default();
+        let place = settings.current(place);
+        self.runs()
+            .active
+            .keys()
+            .any(|held| settings.current(held) == place)
     }
 
     /// Starts a run for a request, unless its place is busy. A run that cannot start ends at once,
     /// saying why, so that the chat sees it. A follow-up in a thread whose session is kept goes
     /// to that session; otherwise a new one is given the thread so far.
     pub(crate) async fn start_run(&self, order: Order) -> anyhow::Result<()> {
-        anyhow::ensure!(self.busy(&order.place).is_none(), "{} is busy", order.place);
+        let settings = self.settings()?;
+        let place = settings.current(&order.place);
+        {
+            // Checked and held in one step, so that two starts cannot both find the place free.
+            let mut runs = self.runs();
+            anyhow::ensure!(
+                !runs
+                    .active
+                    .keys()
+                    .any(|held| settings.current(held) == place),
+                "{} is busy",
+                order.place
+            );
+            runs.active.insert(
+                order.place.clone(),
+                Active {
+                    run: None,
+                    session: None,
+                },
+            );
+        }
         let chat = order.request.chat.clone();
         let thread = order.request.thread.unwrap_or(order.request.id);
         let accepted = Body::RunAccepted(RunAccepted {
@@ -193,14 +223,23 @@ impl Desk {
             steps_by: order.steps_by,
             keep_going: order.keep_going,
         });
-        let run = self.post(&chat, Some(thread), accepted).await?;
+        let run = match self.post(&chat, Some(thread), accepted).await {
+            Ok(run) => run,
+            Err(error) => {
+                self.runs().active.remove(&order.place);
+                return Err(error);
+            }
+        };
+        if let Some(active) = self.runs().active.get_mut(&order.place) {
+            active.run = Some(run);
+        }
+        self.tell(crate::ui::Event::Overview);
         let report = Report { chat, thread, run };
-        let place = self.current(&order.place);
         let kept = self
             .runs()
             .kept
             .remove(&thread)
-            .filter(|kept| kept.place == place);
+            .filter(|kept| settings.current(&kept.place) == place);
         let (parts, earlier) = match kept {
             Some(kept) => ((kept.session, kept.said, kept.folder), String::new()),
             None => match self.open_session(&order).await {
@@ -214,20 +253,31 @@ impl Desk {
                     (parts, earlier)
                 }
                 Err(error) => {
+                    self.forget_run(run);
                     self.end_run(&report, Ending::Failed, Some(format!("{error:#}")))
                         .await;
                     return Ok(());
                 }
             },
         };
-        self.runs().active.insert(
-            place.clone(),
-            Active {
-                run,
-                session: Arc::clone(&parts.0),
-            },
-        );
-        self.tell(crate::ui::Event::Overview);
+        // Stop while it started is kept, and found here, under the same lock it is taken with.
+        let stopped = {
+            let mut runs = self.runs();
+            let stopped = self.was_stopped(run);
+            if let Some(active) = runs.active.get_mut(&order.place)
+                && !stopped
+            {
+                active.session = Some(Arc::clone(&parts.0));
+            }
+            stopped
+        };
+        if stopped {
+            let _ = parts.0.stop().await;
+            self.forget_run(run);
+            self.end_run(&report, Ending::Stopped, self.stopped_by(run))
+                .await;
+            return Ok(());
+        }
         let me = self.me().unwrap_or_else(|| order.asker.clone());
         let text = format!(
             "{}{earlier}{}",
@@ -331,7 +381,7 @@ impl Desk {
                 session,
                 said,
                 folder,
-                place: self.current(&order.place),
+                place: order.place.clone(),
                 keep_going: order.keep_going,
                 last: Instant::now(),
             };
@@ -439,7 +489,7 @@ impl Desk {
 
     fn forget_run(&self, run: EventId) {
         let mut runs = self.runs();
-        runs.active.retain(|_, active| active.run != run);
+        runs.active.retain(|_, active| active.run != Some(run));
         runs.waiting
             .retain(|(waiting_run, _), _| *waiting_run != run);
     }
@@ -493,9 +543,10 @@ impl Desk {
     /// Whether a follow-up in `thread` at `place` may run without a click: its session is kept,
     /// the owner let the asker keep going, and the thread has not been quiet for an hour.
     pub(crate) fn keeps_going(&self, thread: EventId, place: &PlaceName) -> bool {
-        let place = self.current(place);
+        let settings = self.settings().unwrap_or_default();
+        let place = settings.current(place);
         self.runs().kept.get(&thread).is_some_and(|kept| {
-            kept.place == place && kept.keep_going && kept.last.elapsed() < QUIET
+            settings.current(&kept.place) == place && kept.keep_going && kept.last.elapsed() < QUIET
         })
     }
 
@@ -528,20 +579,25 @@ impl Desk {
             let active = runs
                 .active
                 .values()
-                .find(|active| active.run == run)
+                .find(|active| active.run == Some(run))
                 .ok_or_else(|| anyhow::anyhow!("that run is not going on here"))?;
-            Arc::clone(&active.session)
+            // Whoever stopped it first is who stopped it.
+            self.inner
+                .stopped
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .entry(run)
+                .or_insert(by);
+            active.session.clone()
         };
-        self.inner
-            .stopped
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .insert(run, by);
-        session.cancel();
-        tokio::spawn(async move {
-            tokio::time::sleep(GRACE).await;
-            let _ = session.stop().await;
-        });
+        // A run still starting finds itself stopped once its session opens.
+        if let Some(session) = session {
+            session.cancel();
+            tokio::spawn(async move {
+                tokio::time::sleep(GRACE).await;
+                let _ = session.stop().await;
+            });
+        }
         Ok(())
     }
 }
