@@ -69,6 +69,8 @@ async fn serve() -> anyhow::Result<()> {
         url: required("PLAYER_TWO_URL")?.trim_end_matches('/').to_owned(),
         backups: env::var_os("PLAYER_TWO_BACKUPS")
             .map_or_else(|| PathBuf::from("/backups"), PathBuf::from),
+        release: env::var_os("PLAYER_TWO_RELEASE")
+            .map_or_else(|| PathBuf::from("/app/release"), PathBuf::from),
         retention_days: env::var("PLAYER_TWO_RETENTION_DAYS")
             .map_or(Ok(30), |days| days.parse())
             .context("PLAYER_TWO_RETENTION_DAYS must be a number of days")?,

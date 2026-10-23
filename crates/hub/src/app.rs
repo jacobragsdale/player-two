@@ -12,7 +12,7 @@ use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use player_two_core::api::{
     ApiError, ChannelInfo, JoinCodeReply, JoinRequest, Joined, NewChannel, NewEvent, Person,
-    PlaceInfo, PlaceKind, Posted, ResetRequest,
+    PlaceInfo, PlaceKind, Posted, ResetRequest, VersionInfo,
 };
 use player_two_core::event::{Event, EventId};
 use player_two_core::join_code::JoinCode;
@@ -23,6 +23,7 @@ use sha2::{Digest, Sha256};
 
 use crate::clock::Clock;
 use crate::db::Db;
+use crate::release;
 use crate::rules::{self, Verdict};
 use crate::store;
 use crate::stream::{self, Streams};
@@ -40,6 +41,8 @@ pub struct Config {
     pub backups: PathBuf,
     /// How many days events are kept.
     pub retention_days: u32,
+    /// The folder holding the installer and its signature.
+    pub release: PathBuf,
 }
 
 /// What every request can reach.
@@ -58,6 +61,10 @@ pub struct AppState {
 /// All of the hub's routes.
 pub fn router(state: AppState) -> Router {
     Router::new()
+        .route("/healthz", get(healthz))
+        .route("/version", get(version))
+        .route("/download", get(release::download))
+        .route("/update", get(release::update))
         .route("/join", post(join))
         .route("/channels", get(list_channels).post(create_channel))
         .route("/channels/{name}/join", post(join_channel))
@@ -479,4 +486,20 @@ async fn admin_reset(
     }
     state.streams.close(&name);
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// `GET /healthz`: answers once the database answers.
+async fn healthz(State(state): State<AppState>) -> Reply<&'static str> {
+    state
+        .db
+        .call(|connection| Ok(connection.query_row("SELECT 1", [], |_| Ok(()))?))
+        .await?;
+    Ok("ok")
+}
+
+/// `GET /version`.
+async fn version() -> Json<VersionInfo> {
+    Json(VersionInfo {
+        version: env!("CARGO_PKG_VERSION").to_owned(),
+    })
 }

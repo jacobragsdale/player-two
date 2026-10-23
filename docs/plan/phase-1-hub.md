@@ -29,7 +29,7 @@ The whole hub, tested end to end and ready to deploy. [`protocol.md`](protocol.m
 - [x] **P1-9 Retention and backups.**
   - The nightly job from [Storage](protocol.md#storage).
   - A test with a clock the test controls covers it.
-- [ ] **P1-10 Version and downloads.**
+- [x] **P1-10 Version and downloads.**
   - `/healthz` and `/version`.
   - `/download` serves the installer in `PLAYER_TWO_RELEASE`, and `/update` builds the manifest from it and its `.sig`.
   - Without those files, both return `404`.

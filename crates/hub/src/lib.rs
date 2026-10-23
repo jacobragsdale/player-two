@@ -7,6 +7,7 @@ pub mod app;
 pub mod clock;
 pub mod db;
 pub mod nightly;
+pub mod release;
 pub mod rules;
 pub mod store;
 pub mod stream;

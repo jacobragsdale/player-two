@@ -56,6 +56,7 @@ impl Hub {
                 url: "https://hub.example".to_owned(),
                 backups: folder.path().join("backups"),
                 retention_days: 30,
+                release: folder.path().join("release"),
             }),
             clock: clock.clone(),
             streams: Arc::new(Streams::default()),
