@@ -5,9 +5,17 @@ edition.workspace = true
 publish.workspace = true
 
 [dependencies]
+anyhow = "1.0.104"
+player-two-core.workspace = true
+reqwest = { version = "0.13.5", features = ["json"] }
 serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
 specta = { version = "=2.0.0-rc.27", features = ["derive"] }
+tokio = { version = "1.54.1", features = ["rt", "macros", "sync", "time", "fs", "process", "io-util"] }
 
 [dev-dependencies]
+axum = "0.8.9"
+player-two-hub.workspace = true
 specta-serde = "=0.0.14"
 specta-typescript = "=0.0.14"
+tempfile = "3.27.0"

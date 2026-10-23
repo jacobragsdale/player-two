@@ -95,7 +95,7 @@ The window reaches the desk through one Tauri command and one event:
 
 The three enums live in `crates/desk/src/ui.rs`. A test writes them to `ui/src/desk.ts` with `specta-typescript`, and fails when the file it finds is out of date. Nothing else crosses between the webview and Rust.
 
-The desk keeps its files in the app's data folder (`%APPDATA%\player-two\`):
+The desk keeps its files in the app's data folder, which Tauri names after the app's identifier (`%APPDATA%\io.github.jacobragsdale.player-two\`):
 - `identity.json`: `{ hub, name, token }`.
 - `settings.json`: the default mode, the shared folders and where `machine` runs by default.
 

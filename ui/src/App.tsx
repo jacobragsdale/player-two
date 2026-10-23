@@ -11,7 +11,7 @@ export function App(): JSX.Element {
   useEffect(() => {
     ask({ type: "hello" }).then(
       (response) => {
-        setVersion(response.version);
+        setVersion(response.type === "hello" ? response.version : null);
       },
       () => {
         setVersion(null);

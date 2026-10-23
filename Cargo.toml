@@ -11,3 +11,4 @@ publish = false
 [workspace.dependencies]
 player-two-core = { path = "crates/core" }
 player-two-desk = { path = "crates/desk" }
+player-two-hub = { path = "crates/hub" }

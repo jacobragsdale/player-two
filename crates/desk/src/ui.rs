@@ -3,6 +3,7 @@
 //! These are the only types the webview sees. A test writes them to `ui/src/desk.ts`, so the
 //! window is typed by what is here and never by hand.
 
+use player_two_core::names::PersonName;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
@@ -12,6 +13,15 @@ use specta::Type;
 pub enum Request {
     /// Asks the desk to say who it is.
     Hello,
+    /// Asks whether this machine has joined, and what name to offer if not.
+    Setup,
+    /// Joins the hub in a join code under a name.
+    Join {
+        /// The join code, as pasted.
+        code: String,
+        /// The name to join under.
+        name: String,
+    },
 }
 
 /// The desk's answer to one [`Request`].
@@ -23,6 +33,15 @@ pub enum Response {
         /// The version the hub, the app and the desk all share.
         version: String,
     },
+    /// The answer to [`Request::Setup`].
+    Setup {
+        /// The name this machine joined under, once it has.
+        joined: Option<PersonName>,
+        /// The name to offer, from the Windows user name.
+        suggested_name: Option<String>,
+    },
+    /// The request was done, and there is nothing more to say.
+    Done,
 }
 
 #[cfg(test)]

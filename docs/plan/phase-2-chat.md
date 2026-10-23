@@ -4,7 +4,7 @@ The window becomes a chat people can use every day, without agents yet.
 
 ## Tasks
 
-- [ ] **P2-1 First run.**
+- [x] **P2-1 First run.**
   - The desk decodes a join code, prefills the name from the Windows user name, and joins.
   - It saves `identity.json`.
   - A taken name shows the hub's hint: ask an admin to run `reset`.

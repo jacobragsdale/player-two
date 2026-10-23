@@ -10,7 +10,7 @@ use tauri::{Manager, State};
 /// Passes one request from the window to the desk. This is the only command the webview may call.
 #[tauri::command]
 async fn desk(request: Request, desk: State<'_, Desk>) -> Result<Response, String> {
-    Ok(desk.handle(request).await)
+    desk.handle(request).await
 }
 
 fn main() -> anyhow::Result<()> {
@@ -23,7 +23,11 @@ fn main() -> anyhow::Result<()> {
                 let _ = window.set_focus();
             }
         }))
-        .manage(Desk::new())
+        .setup(|app| {
+            let folder = app.path().app_data_dir()?;
+            app.manage(Desk::new(folder));
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![desk])
         .run(tauri::generate_context!())?;
     Ok(())
