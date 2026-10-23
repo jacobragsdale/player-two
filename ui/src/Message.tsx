@@ -15,6 +15,9 @@ export function when(ts: number): string {
 }
 
 export function Message({ item, me, onThread }: { readonly item: Item; readonly me: string; readonly onThread: ((root: number) => void) | null }): JSX.Element {
+  const open = (): void => {
+    onThread?.(item.id);
+  };
   return (
     <article className="group px-4 py-1.5 hover:bg-muted/40" data-id={item.id}>
       <header className="flex items-baseline gap-2">
@@ -22,19 +25,16 @@ export function Message({ item, me, onThread }: { readonly item: Item; readonly 
         <time className="text-xs text-muted-foreground" dateTime={new Date(item.ts).toISOString()} title={new Date(item.ts).toLocaleString()}>
           {when(item.ts)}
         </time>
+        {onThread !== null && item.replies === 0 && (
+          <Button type="button" variant="ghost" size="xs" className="ml-auto h-5 text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100" onClick={open}>
+            Reply in thread
+          </Button>
+        )}
       </header>
       <Text text={item.text} />
-      {onThread !== null && (
-        <Button
-          type="button"
-          variant="link"
-          size="xs"
-          className={item.replies > 0 ? "h-auto px-0 text-tag" : "h-auto px-0 text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100"}
-          onClick={() => {
-            onThread(item.id);
-          }}
-        >
-          {item.replies === 0 ? "Reply in thread" : `${String(item.replies)} ${item.replies === 1 ? "reply" : "replies"}`}
+      {onThread !== null && item.replies > 0 && (
+        <Button type="button" variant="link" size="xs" className="h-auto px-0 text-tag" onClick={open}>
+          {item.replies} {item.replies === 1 ? "reply" : "replies"}
         </Button>
       )}
     </article>

@@ -5,8 +5,9 @@ import type { JSX } from "react";
 
 import { Button } from "@/components/ui/button";
 
+import { LeaveChannel } from "./Channels.tsx";
 import { Composer } from "./Composer.tsx";
-import type { ChatId } from "./desk.ts";
+import type { ChatId, ChatView } from "./desk.ts";
 import { ask, problem } from "./deskClient.ts";
 import { useChat } from "./hooks.ts";
 import { Message } from "./Message.tsx";
@@ -20,14 +21,19 @@ interface Props {
   readonly thread: number | null;
   readonly onThread: (root: number) => void;
   readonly onClose: (() => void) | null;
+  /** Called once the person left this channel; null in a thread. */
+  readonly onLeft: (() => void) | null;
 }
 
-/** The chat's name, or "Thread", with who else is in a channel, and the button that closes a thread. */
-function Header({ title, others, onClose }: { readonly title: string; readonly others: readonly string[] | null; readonly onClose: (() => void) | null }): JSX.Element {
+/** The chat's name, or "Thread"; in a channel's top level, who else is in it and the button that leaves it; in a thread, the button that closes it. */
+function Header({ view, me, onClose, onLeft }: { readonly view: ChatView; readonly me: string; readonly onClose: (() => void) | null; readonly onLeft: (() => void) | null }): JSX.Element {
+  const channel = view.thread === null && view.chat.startsWith("#");
+  const others = view.members.filter((member) => member !== me);
   return (
     <header className="flex items-center gap-2 border-b px-4 py-2">
-      <h2 className="font-semibold">{title}</h2>
-      {others !== null && <span className="truncate text-xs text-muted-foreground">{others.length === 0 ? "just you" : `you, ${others.join(", ")}`}</span>}
+      <h2 className="font-semibold">{view.thread === null ? view.title : "Thread"}</h2>
+      {channel && <span className="truncate text-xs text-muted-foreground">{others.length === 0 ? "just you" : `you, ${others.join(", ")}`}</span>}
+      {channel && onLeft !== null && <LeaveChannel chat={view.chat} onLeft={onLeft} />}
       {onClose !== null && (
         <Button type="button" variant="ghost" size="xs" className="ml-auto" onClick={onClose} aria-label="Close the thread">
           ✕
@@ -63,7 +69,7 @@ function Older({ chat }: { readonly chat: ChatId }): JSX.Element {
   );
 }
 
-export function Chat({ chat, me, thread, onThread, onClose }: Props): JSX.Element {
+export function Chat({ chat, me, thread, onThread, onClose, onLeft }: Props): JSX.Element {
   const view = useChat(chat, thread);
   const list = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
@@ -97,10 +103,9 @@ export function Chat({ chat, me, thread, onThread, onClose }: Props): JSX.Elemen
   if (view === null) {
     return <section className="flex flex-1 items-center justify-center text-muted-foreground">Loading…</section>;
   }
-  const others = view.members.filter((member) => member !== me);
   return (
     <section className="flex min-w-0 flex-1 flex-col" aria-label={thread === null ? view.title : "thread"}>
-      <Header title={thread === null ? view.title : "Thread"} others={thread === null && view.chat.startsWith("#") ? others : null} onClose={onClose} />
+      <Header view={view} me={me} onClose={onClose} onLeft={onLeft} />
       <div
         ref={list}
         className="flex-1 overflow-y-auto py-2"

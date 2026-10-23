@@ -19,7 +19,7 @@ The window becomes a chat people can use every day, without agents yet.
   - A person's message is drawn as text.
   - An agent's Markdown is drawn with `react-markdown`, with raw HTML left as text and no image fetched.
   - Vitest tests show that `<script>`, raw HTML, `javascript:` links and remote images all render inert.
-- [ ] **P2-6 Channels.** Dialogs to create, join and leave a channel, and to start a direct chat.
+- [x] **P2-6 Channels.** Dialogs to create, join and leave a channel, and to start a direct chat.
 - [ ] **P2-7 Tray, start at login, notifications.**
   - Closing the window keeps the app running in the tray, and the tray's Quit really quits.
   - The app starts at login.
@@ -32,3 +32,6 @@ The window becomes a chat people can use every day, without agents yet.
 Two people can join with a join code and chat. Messages from other people cannot run anything in the window.
 
 ## Notes
+
+- **P2-6: a direct chat needs no dialog.** Everyone who has joined is listed under People, each row their direct chat, so starting one is clicking a name.
+- **Seeing the window on this machine.** There is no display here, so the window was checked in headless Chromium: the built page with Tauri's IPC mocked by a canned desk, under the same content security policy, in light and dark. The harness lives outside the repository; nothing in the plan asks for one.
