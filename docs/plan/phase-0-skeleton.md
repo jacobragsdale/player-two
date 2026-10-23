@@ -12,7 +12,7 @@ Every part exists, does nothing yet, and is checked on every push. Read [`../pla
   - `ui/` uses Vite, React, strict TypeScript, ESLint, Prettier, Tailwind and Vitest.
   - `npm run check` runs typecheck, lint, format check, test and build, in that order.
   - Lift the TypeScript, ESLint and Prettier settings from v0.7.1 (`tsconfig.json`, `eslint.config.mjs`, `prettier.config.mjs`), dropping what was there for Node and Electron. They must end up no weaker.
-- [ ] **P0-3 The look.** Lift v0.7.1's shadcn components (`src/window/renderer/components/ui/`), its theme and `components.json` into `ui/`. Keep only the components the UI will use, and add the rest when a task needs them.
+- [x] **P0-3 The look.** Lift v0.7.1's shadcn components (`src/window/renderer/components/ui/`), its theme and `components.json` into `ui/`. Keep only the components the UI will use, and add the rest when a task needs them.
 - [ ] **P0-4 The Tauri shell.** `crates/app` opens `ui/dist` in a window, and allows only one instance.
   - The content security policy is v0.7.1's (`default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:`), plus the IPC origins Tauri needs in `connect-src`.
   - The webview's capabilities grant only the `desk` command and the `desk` event.
