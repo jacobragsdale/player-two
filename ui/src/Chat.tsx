@@ -161,7 +161,17 @@ export function Chat({ chat, me, thread, onThread, onClose, onLeft, mode, people
           </div>
         ))}
       </div>
-      <Composer key={mode} chat={chat} thread={thread} mode={mode} people={people} members={view.members} placeholder={thread === null ? `Message ${view.title}` : "Reply in the thread"} />
+      <Composer
+        key={mode}
+        chat={chat}
+        thread={thread}
+        me={me}
+        ownThread={thread !== null && view.items.some((item) => item.author === me && item.runs.some((run) => run.mine))}
+        mode={mode}
+        people={people}
+        members={view.members}
+        placeholder={thread === null ? `Message ${view.title}` : "Reply in the thread"}
+      />
     </section>
   );
 }

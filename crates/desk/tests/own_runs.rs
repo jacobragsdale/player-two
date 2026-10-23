@@ -200,3 +200,41 @@ async fn a_busy_place_leaves_the_next_tag_waiting_and_stop_stops_it() {
     assert_eq!(ran.runs[0].result.as_deref(), Some("Did: read pip.conf."));
     assert!(ran.waiting.is_empty());
 }
+
+#[tokio::test]
+async fn a_follow_up_of_your_own_run_runs_at_once_at_your_mode() {
+    let hub = Hub::start().await;
+    let desk = alice(&hub).await;
+    send(&desk, "@alice read it", None).await;
+    let first = until_item(&desk, "@alice read it", "the first run", |item| {
+        item.runs
+            .first()
+            .is_some_and(|run| run.state == RunState::Done)
+    })
+    .await;
+    let sent = desk
+        .handle(Request::Send {
+            chat: id(CHAT),
+            thread: Some(first.id),
+            text: "now run it".to_owned(),
+            mode: Some(Mode::Full),
+        })
+        .await;
+    assert_eq!(sent, Ok(Response::Done));
+    for _ in 0..500 {
+        let view = chat(&desk, CHAT, Some(first.id)).await;
+        if let Some(run) = view
+            .items
+            .iter()
+            .find(|item| item.text == "now run it")
+            .and_then(|item| item.runs.first())
+            && run.state == RunState::Done
+        {
+            assert_eq!(run.mode, Mode::Full);
+            assert_eq!(run.result.as_deref(), Some("Did: run done."));
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    panic!("the follow-up did not run");
+}

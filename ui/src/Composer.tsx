@@ -1,6 +1,6 @@
 /**
- * The message box: Enter sends, Shift+Enter starts a new line, and a message that could not be sent stays in the box with the reason under it. Under it, the mode the person's own agent runs at when
- * they tag it, which they can switch in one click; the switch becomes their default.
+ * The message box: Enter sends, Shift+Enter starts a new line, and a message that could not be sent stays in the box with the reason under it. While the text tags one of the person's own places,
+ * or in the thread of a run of theirs, the mode their agent runs at shows under it, and they can switch it in one click; the switch becomes their default.
  */
 
 import { useRef, useState } from "react";
@@ -42,10 +42,18 @@ function ModeSwitch({ mode, onMode }: { readonly mode: Mode; readonly onMode: (m
   );
 }
 
+/** Whether a text tags one of `me`'s places: `@me` or `@me/place`, starting the text or after a space. */
+export function tagsMe(text: string, me: string): boolean {
+  return new RegExp(`(^|\\s)@${me}(/[a-z0-9._-]+)?($|[\\s,.;:!?])`).test(text);
+}
+
 interface Props {
   readonly chat: ChatId;
   readonly thread: number | null;
   readonly placeholder: string;
+  readonly me: string;
+  /** Whether this is the thread of a run of the person's own, where a follow-up runs their agent. */
+  readonly ownThread: boolean;
   /** The mode the person's own agent runs at: the default, until they switch it. */
   readonly mode: Mode;
   /** Everyone who can be tagged, and who is in this chat. */
@@ -77,7 +85,7 @@ function TagList({ tags, picked, onPick }: { readonly tags: readonly string[]; r
   );
 }
 
-export function Composer({ chat, thread, placeholder, mode: usual, people, members }: Props): JSX.Element {
+export function Composer({ chat, thread, placeholder, me, ownThread, mode: usual, people, members }: Props): JSX.Element {
   const [text, setText] = useState("");
   const [caret, setCaret] = useState(0);
   const [picked, setPicked] = useState(0);
@@ -188,7 +196,7 @@ export function Composer({ chat, thread, placeholder, mode: usual, people, membe
           not sent: {error}
         </p>
       )}
-      <ModeSwitch mode={mode} onMode={setMode} />
+      {(ownThread || tagsMe(text, me)) && <ModeSwitch mode={mode} onMode={setMode} />}
     </div>
   );
 }

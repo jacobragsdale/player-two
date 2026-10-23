@@ -702,6 +702,28 @@ impl Desk {
             ts: 0,
             body,
         };
+        // A follow-up of the person's own run goes to their agent at once, as their tag would.
+        let own_follow_up = self
+            .state()
+            .chats
+            .as_ref()
+            .and_then(|chats| chats.followed(&request))
+            .filter(|run| run.owner == me && run.state != ui::RunState::Working);
+        if let Some(run) = own_follow_up
+            && self.busy(&run.place).is_none()
+        {
+            self.start_run(runs::Order {
+                request: request.clone(),
+                asker: me.clone(),
+                text: text.clone(),
+                place: run.place,
+                runs_in: run.runs_in,
+                mode: settings.default_mode,
+                steps_by: StepsBy::Owner,
+                keep_going: false,
+            })
+            .await?;
+        }
         for tag in tags.into_iter().filter(|tag| tag.person == me) {
             if self.busy(&tag.place).is_some() {
                 // It waits, as a teammate's request would, until the place is free.
