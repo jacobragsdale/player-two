@@ -67,6 +67,11 @@ async fn serve() -> anyhow::Result<()> {
         join_token: required("PLAYER_TWO_JOIN_TOKEN")?,
         admin_token: required("PLAYER_TWO_ADMIN_TOKEN")?,
         url: required("PLAYER_TWO_URL")?.trim_end_matches('/').to_owned(),
+        backups: env::var_os("PLAYER_TWO_BACKUPS")
+            .map_or_else(|| PathBuf::from("/backups"), PathBuf::from),
+        retention_days: env::var("PLAYER_TWO_RETENTION_DAYS")
+            .map_or(Ok(30), |days| days.parse())
+            .context("PLAYER_TWO_RETENTION_DAYS must be a number of days")?,
     };
     let path = env::var_os("PLAYER_TWO_DB")
         .map_or_else(|| PathBuf::from("/data/player-two.db"), PathBuf::from);
@@ -76,6 +81,7 @@ async fn serve() -> anyhow::Result<()> {
         clock: Clock::default(),
         streams: Arc::new(Streams::default()),
     };
+    tokio::spawn(player_two_hub::nightly::every_night(state.clone()));
     let port = port()?;
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", port))
         .await

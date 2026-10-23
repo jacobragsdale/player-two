@@ -19,6 +19,7 @@ pub const ADMIN_TOKEN: &str = "admin-token";
 /// A running hub.
 pub struct Hub {
     pub base: String,
+    pub state: AppState,
     pub clock: Clock,
     pub client: reqwest::Client,
     _folder: tempfile::TempDir,
@@ -53,6 +54,8 @@ impl Hub {
                 join_token: JOIN_TOKEN.to_owned(),
                 admin_token: ADMIN_TOKEN.to_owned(),
                 url: "https://hub.example".to_owned(),
+                backups: folder.path().join("backups"),
+                retention_days: 30,
             }),
             clock: clock.clone(),
             streams: Arc::new(Streams::default()),
@@ -61,9 +64,11 @@ impl Hub {
             .await
             .expect("a free port");
         let base = format!("http://{}", listener.local_addr().expect("an address"));
-        tokio::spawn(async move { axum::serve(listener, router(state)).await });
+        let app = router(state.clone());
+        tokio::spawn(async move { axum::serve(listener, app).await });
         Self {
             base,
+            state,
             clock,
             client: reqwest::Client::new(),
             _folder: folder,

@@ -26,7 +26,7 @@ The whole hub, tested end to end and ready to deploy. [`protocol.md`](protocol.m
 - [x] **P1-8 Admin.**
   - `/admin/join-code` and `/admin/reset`, checked against `PLAYER_TWO_ADMIN_TOKEN`. A reset closes that person's open stream.
   - `player-two-hub join-code` and `player-two-hub reset NAME` call the running hub.
-- [ ] **P1-9 Retention and backups.**
+- [x] **P1-9 Retention and backups.**
   - The nightly job from [Storage](protocol.md#storage).
   - A test with a clock the test controls covers it.
 - [ ] **P1-10 Version and downloads.**

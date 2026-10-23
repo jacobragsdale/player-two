@@ -1,5 +1,6 @@
 //! The hub's HTTP API: its state, its routes, who is asking, and how it refuses.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::extract::rejection::JsonRejection;
@@ -35,6 +36,10 @@ pub struct Config {
     pub admin_token: String,
     /// The hub's own address, as people reach it: for join codes and the update manifest.
     pub url: String,
+    /// Where the nightly copies of the database go.
+    pub backups: PathBuf,
+    /// How many days events are kept.
+    pub retention_days: u32,
 }
 
 /// What every request can reach.
