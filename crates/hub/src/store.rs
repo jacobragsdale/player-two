@@ -1,11 +1,11 @@
 //! Reads and writes on the database, one function each, so the routes stay about HTTP.
 
 use anyhow::Context;
-use player_two_core::api::ChannelInfo;
+use player_two_core::api::{ChannelInfo, PlaceInfo, PlaceKind};
 use player_two_core::event::{Body, Event, EventId};
 use std::collections::HashMap;
 
-use player_two_core::names::{ChannelName, ChatId, PersonName};
+use player_two_core::names::{ChannelName, ChatId, PersonName, PlaceName};
 use rusqlite::{Connection, OptionalExtension, Row};
 use serde_json::{Value, json};
 
@@ -235,6 +235,58 @@ pub fn events_after(
         }
     }
     Ok(events)
+}
+
+/// Replaces the places `owner` advertises.
+pub fn set_places(
+    connection: &mut Connection,
+    owner: &PersonName,
+    places: &[PlaceInfo],
+) -> anyhow::Result<()> {
+    let transaction = connection.transaction()?;
+    transaction.execute("DELETE FROM places WHERE owner = ?1", [owner.as_str()])?;
+    for place in places {
+        let kind = match place.kind {
+            PlaceKind::Machine => "machine",
+            PlaceKind::Repo => "repo",
+        };
+        transaction.execute(
+            "INSERT INTO places (owner, name, kind) VALUES (?1, ?2, ?3) ON CONFLICT DO NOTHING",
+            (owner.as_str(), place.name.as_str(), kind),
+        )?;
+    }
+    transaction.commit()?;
+    Ok(())
+}
+
+/// One person as the database knows them: name, when last seen, and their places.
+pub type PersonRow = (PersonName, Option<i64>, Vec<PlaceInfo>);
+
+/// Everyone who has joined, by name, with when they were last seen and the places they advertise.
+pub fn people(connection: &Connection) -> anyhow::Result<Vec<PersonRow>> {
+    let mut places: HashMap<String, Vec<PlaceInfo>> = HashMap::new();
+    let mut statement =
+        connection.prepare("SELECT owner, name, kind FROM places ORDER BY owner, kind, name")?;
+    let mut rows = statement.query([])?;
+    while let Some(row) = rows.next()? {
+        let kind = match row.get::<_, String>(2)?.as_str() {
+            "machine" => PlaceKind::Machine,
+            _ => PlaceKind::Repo,
+        };
+        places.entry(row.get(0)?).or_default().push(PlaceInfo {
+            name: PlaceName::new(row.get::<_, String>(1)?)?,
+            kind,
+        });
+    }
+    let mut statement = connection.prepare("SELECT name, last_seen FROM people ORDER BY name")?;
+    let mut rows = statement.query([])?;
+    let mut people = Vec::new();
+    while let Some(row) = rows.next()? {
+        let name: String = row.get(0)?;
+        let owned = places.remove(&name).unwrap_or_default();
+        people.push((PersonName::new(name)?, row.get(1)?, owned));
+    }
+    Ok(people)
 }
 
 #[cfg(test)]

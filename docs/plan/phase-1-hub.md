@@ -22,7 +22,7 @@ The whole hub, tested end to end and ready to deploy. [`protocol.md`](protocol.m
 - [x] **P1-6 The stream.**
   - `GET /stream` sends events and presence, resumes with `Last-Event-ID`, and sends keep-alives.
   - A person is here while a stream is open.
-- [ ] **P1-7 Places and people.** `PUT /places` and `GET /people`.
+- [x] **P1-7 Places and people.** `PUT /places` and `GET /people`.
 - [ ] **P1-8 Admin.**
   - `/admin/join-code` and `/admin/reset`, checked against `PLAYER_TWO_ADMIN_TOKEN`. A reset closes that person's open stream.
   - `player-two-hub join-code` and `player-two-hub reset NAME` call the running hub.

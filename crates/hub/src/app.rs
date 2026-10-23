@@ -7,10 +7,11 @@ use axum::extract::{FromRequest, FromRequestParts, Path, Query, Request, State};
 use axum::http::StatusCode;
 use axum::http::request::Parts;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use player_two_core::api::{
-    ApiError, ChannelInfo, JoinRequest, Joined, NewChannel, NewEvent, Posted,
+    ApiError, ChannelInfo, JoinRequest, Joined, NewChannel, NewEvent, Person, PlaceInfo, PlaceKind,
+    Posted,
 };
 use player_two_core::event::{Event, EventId};
 use player_two_core::names::{ChannelName, ChatId, PersonName};
@@ -56,6 +57,8 @@ pub fn router(state: AppState) -> Router {
         .route("/chats/{chat}/events", get(chat_events))
         .route("/events", post(post_event))
         .route("/stream", get(stream::stream))
+        .route("/places", put(set_places))
+        .route("/people", get(people))
         .with_state(state)
 }
 
@@ -359,4 +362,55 @@ async fn post_event(
         }
         Err(reason) => Err(Refusal::new(StatusCode::FORBIDDEN, reason)),
     }
+}
+
+/// The most places one person may advertise.
+const MOST_PLACES: usize = 200;
+
+/// `PUT /places`.
+async fn set_places(
+    State(state): State<AppState>,
+    Caller(me): Caller,
+    Input(places): Input<Vec<PlaceInfo>>,
+) -> Reply<StatusCode> {
+    if places.len() > MOST_PLACES {
+        return Err(Refusal::new(
+            StatusCode::BAD_REQUEST,
+            format!("at most {MOST_PLACES} places"),
+        ));
+    }
+    // A machine is called `machine`, and nothing else is.
+    if places
+        .iter()
+        .any(|place| place.name.is_machine() != (place.kind == PlaceKind::Machine))
+    {
+        return Err(Refusal::new(
+            StatusCode::BAD_REQUEST,
+            "only the machine may be called machine",
+        ));
+    }
+    state
+        .db
+        .call(move |connection| store::set_places(connection, &me, &places))
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// `GET /people`.
+async fn people(State(state): State<AppState>, _: Caller) -> Reply<Json<Vec<Person>>> {
+    let people = state
+        .db
+        .call(|connection| store::people(connection))
+        .await?;
+    Ok(Json(
+        people
+            .into_iter()
+            .map(|(name, last_seen, places)| Person {
+                here: state.streams.is_here(&name),
+                name,
+                last_seen,
+                places,
+            })
+            .collect(),
+    ))
 }
