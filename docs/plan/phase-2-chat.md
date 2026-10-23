@@ -20,7 +20,7 @@ The window becomes a chat people can use every day, without agents yet.
   - An agent's Markdown is drawn with `react-markdown`, with raw HTML left as text and no image fetched.
   - Vitest tests show that `<script>`, raw HTML, `javascript:` links and remote images all render inert.
 - [x] **P2-6 Channels.** Dialogs to create, join and leave a channel, and to start a direct chat.
-- [ ] **P2-7 Tray, start at login, notifications.**
+- [x] **P2-7 Tray, start at login, notifications.**
   - Closing the window keeps the app running in the tray, and the tray's Quit really quits.
   - The app starts at login.
   - A notification arrives for a direct message, or a tag of you or your places, and opens that chat when clicked.
