@@ -95,16 +95,10 @@ pub enum Request {
     Update,
     /// Asks for the person's places.
     Places,
-    /// Asks for checkouts worth sharing, found under `dev` folders.
-    Suggestions,
-    /// Shares a checkout.
-    AddFolder {
-        /// Where it is: a Windows path, or a Linux path in a WSL distro.
-        path: String,
-        /// Which system it is on.
-        runs_in: RunsIn,
-    },
-    /// Stops sharing a checkout.
+    /// Opens the folder dialog, and shares the folder picked. A folder picked through
+    /// `\\wsl.localhost` is shared in its distro.
+    PickFolder,
+    /// Stops sharing a folder.
     RemoveFolder {
         /// Its name.
         name: PlaceName,
@@ -115,8 +109,8 @@ pub enum Request {
         /// Windows, or a WSL distro.
         runs_in: RunsIn,
     },
-    /// Asks what the approval card for a place needs: where it may run, and whether a checkout
-    /// has changes not committed.
+    /// Asks what the approval card for a place needs: where it may run, and whether a git
+    /// checkout has changes not committed.
     Approval {
         /// The place tagged.
         place: PlaceName,
@@ -187,7 +181,7 @@ pub enum Response {
         choices: Vec<RunsIn>,
         /// Where it runs unless the owner picks another.
         runs_in: RunsIn,
-        /// Whether a checkout has changes not committed, which an edit would run among.
+        /// Whether a git checkout has changes not committed, which an edit would run among.
         dirty: bool,
     },
     /// The answer to [`Request::CheckAgent`].
@@ -196,11 +190,6 @@ pub enum Response {
         ready: bool,
         /// What was found, in words.
         message: String,
-    },
-    /// The answer to [`Request::Suggestions`].
-    Suggestions {
-        /// Checkouts not shared yet.
-        folders: Vec<Folder>,
     },
     /// The request was done, and there is nothing more to say.
     Done,
@@ -261,7 +250,7 @@ pub enum Connection {
 pub struct PlacesView {
     /// Where `@me` runs by default.
     pub machine_runs_in: RunsIn,
-    /// The checkouts shared.
+    /// The folders shared.
     pub folders: Vec<Folder>,
     /// The WSL distros with an agent in them; none without WSL, or with no agent in it.
     pub distros: Vec<String>,

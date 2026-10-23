@@ -13,7 +13,7 @@ test("a tag is being typed after an @ that starts a word", () => {
   expect(typedTag("@bob done")).toBeNull();
 });
 
-test("the chat's members come first, each machine before its checkouts", () => {
+test("the chat's members come first, each machine before its folders", () => {
   expect(candidates("", people, ["bob"])).toEqual(["bob", "bob/uploader", "alice", "alice/notes"]);
   expect(candidates("al", people, [])).toEqual(["alice", "alice/notes"]);
   expect(candidates("up", people, [])).toEqual(["bob/uploader"]);

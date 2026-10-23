@@ -19,6 +19,7 @@ pub mod ui;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
@@ -44,6 +45,11 @@ const REFRESH: Duration = Duration::from_secs(60);
 /// How long a desk that found the hub on another version waits before looking again.
 const RECHECK: Duration = Duration::from_secs(300);
 
+/// Opens the system's folder dialog, and gives back the folder picked, or `None` when the person
+/// cancelled it. The app shell gives the desk one with [`Desk::set_picker`].
+pub type Picker =
+    Arc<dyn Fn() -> Pin<Box<dyn Future<Output = Option<String>> + Send>> + Send + Sync>;
+
 /// The hub runs another version than this app, which must change before anything else.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct WrongVersion(String);
@@ -67,7 +73,6 @@ pub struct Desk {
     inner: Arc<Inner>,
 }
 
-#[derive(Debug)]
 struct Inner {
     files: Files,
     http: reqwest::Client,
@@ -81,6 +86,16 @@ struct Inner {
     stopped: Mutex<std::collections::HashSet<EventId>>,
     /// Numbers the steps put to a person.
     prompts: std::sync::atomic::AtomicU64,
+    /// The folder dialog, once the app shell has given one.
+    picker: Mutex<Option<Picker>>,
+}
+
+impl std::fmt::Debug for Inner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Inner")
+            .field("files", &self.files)
+            .finish_non_exhaustive()
+    }
 }
 
 #[derive(Debug)]
@@ -111,6 +126,7 @@ impl Desk {
             runs: Mutex::new(runs::Runs::default()),
             stopped: Mutex::new(std::collections::HashSet::new()),
             prompts: std::sync::atomic::AtomicU64::new(1),
+            picker: Mutex::new(None),
         };
         (
             Self {
@@ -118,6 +134,15 @@ impl Desk {
             },
             receiver,
         )
+    }
+
+    /// Gives the desk the system's folder dialog, which sharing a folder opens.
+    pub fn set_picker(&self, picker: Picker) {
+        *self
+            .inner
+            .picker
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(picker);
     }
 
     fn state(&self) -> MutexGuard<'_, State> {
@@ -240,13 +265,18 @@ impl Desk {
                         .collect(),
                 }))
             }
-            Request::Suggestions => {
-                let settings = self.settings()?;
-                let folders = places::suggestions(&settings, &system::distros().await).await;
-                Ok(Response::Suggestions { folders })
-            }
-            Request::AddFolder { path, runs_in } => {
-                self.add_folder(path, runs_in).await?;
+            Request::PickFolder => {
+                let picker = self
+                    .inner
+                    .picker
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .clone()
+                    .context("folders are picked with Windows' folder dialog, which is not here")?;
+                if let Some(picked) = picker().await {
+                    let (path, runs_in) = places::located(&picked);
+                    self.add_folder(path, runs_in).await?;
+                }
                 Ok(Response::Done)
             }
             Request::RemoveFolder { name } => {
@@ -368,12 +398,8 @@ impl Desk {
         Ok(())
     }
 
-    async fn add_folder(
-        &self,
-        path: String,
-        runs_in: player_two_core::event::RunsIn,
-    ) -> anyhow::Result<()> {
-        let path = path.trim().to_owned();
+    /// Shares a folder, named after its remote when it is a git checkout.
+    async fn add_folder(&self, path: String, runs_in: RunsIn) -> anyhow::Result<()> {
         anyhow::ensure!(
             places::exists(&path, &runs_in).await,
             "there is no folder at {path}"

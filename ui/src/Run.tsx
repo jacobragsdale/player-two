@@ -12,7 +12,7 @@ import { Markdown } from "./Markdown.tsx";
 
 const MODE_WORDS = { "read-only": "read-only", ask: "asks before changes", full: "full" } as const;
 
-/** Where a run is, in words: someone's computer, a WSL distro of it, or one of their checkouts. */
+/** Where a run is, in words: someone's computer, a WSL distro of it, or one of their shared folders. */
 function whereItRuns(run: RunView, me: string): string {
   const whose = run.owner === me ? "your" : `${run.owner}'s`;
   if (run.place !== "machine") {

@@ -29,13 +29,13 @@ pub struct Joined {
     pub token: String,
 }
 
-/// Whether a place is a machine or a checkout.
+/// Whether a place is a machine or a shared folder.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
 #[serde(rename_all = "lowercase")]
 pub enum PlaceKind {
     /// The person's machine.
     Machine,
-    /// One of their shared checkouts.
+    /// One of their shared folders. The wire calls it `repo`.
     Repo,
 }
 
@@ -44,7 +44,7 @@ pub enum PlaceKind {
 pub struct PlaceInfo {
     /// Its name.
     pub name: PlaceName,
-    /// Machine or checkout.
+    /// Machine or folder.
     pub kind: PlaceKind,
 }
 

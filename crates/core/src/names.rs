@@ -117,7 +117,7 @@ checked_name!(ChannelName, "channel name", |name| {
     !name.is_empty() && name.len() <= 32 && name.chars().all(|c| is_lower_alnum(c) || c == '-')
 });
 
-/// Where an agent can run for someone: `machine`, or one of their shared checkouts, named by up
+/// Where an agent can run for someone: `machine`, or one of their shared folders, named by up
 /// to 64 lowercase letters, digits, `.`, `_` or `-`, starting with a letter or digit.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Type)]
 #[serde(try_from = "String", into = "String")]
@@ -141,7 +141,7 @@ impl PlaceName {
         Self(Self::MACHINE.to_owned())
     }
 
-    /// Whether this is a machine rather than a checkout.
+    /// Whether this is a machine rather than a shared folder.
     #[must_use]
     pub fn is_machine(&self) -> bool {
         self.0 == Self::MACHINE

@@ -32,7 +32,7 @@ impl std::fmt::Debug for Running {
     }
 }
 
-/// Starts an agent in a folder: a checkout's, or for the machine the agent's home folder.
+/// Starts an agent in a folder: a shared one, or for the machine the agent's home folder.
 pub fn start(agent: &Found, folder: &str) -> anyhow::Result<Started> {
     let mut command = match &agent.runs_in {
         RunsIn::Windows => {

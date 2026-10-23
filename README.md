@@ -21,7 +21,7 @@ Player Two starts with Windows and lives in the tray. Closing the window keeps i
 
 - **Ask your own agent** by tagging yourself: `@you what is eating my disk space?` It runs at once, on your computer, at the mode under the message box: **Read-only**, **Ask** (each change or command waits for your yes), or **Full**.
 - **Ask a teammate's agent** by tagging them: `@alice can your agent fix pip's proxy?` Nothing runs until Alice approves. Her card lets her choose the mode, hand you the steps to answer, and let you keep going: your replies in that thread then run without asking her again, until she presses **Stop** or the thread is quiet for an hour.
-- **Share a checkout** in **Settings** so teammates can ask about it as `@you/repo`. Checkouts in your `dev` folder are offered.
+- **Share a folder** in **Settings** so teammates can ask about it as `@you/name`. **Share a folder…** opens Windows' folder dialog; a folder in WSL is under **Linux** in its side panel. A git checkout is named after its remote, and any other folder after itself.
 - Everyone in the chat sees what the agent did and what it answered. Nothing runs as administrator: when a step needs that, the agent says what to run.
 
 ## Running a hub

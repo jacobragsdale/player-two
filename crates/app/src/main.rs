@@ -1,5 +1,6 @@
 //! The Tauri shell around the window and the desk: one window, a tray icon that keeps the app
-//! running when the window is closed, start at login, and Windows' notifications.
+//! running when the window is closed, start at login, Windows' notifications, and its folder
+//! dialog.
 
 // A release build is a windowed app with no console of its own.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -60,6 +61,8 @@ fn main() -> anyhow::Result<()> {
 
 fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let (desk, mut told) = Desk::new(app.path().app_data_dir()?);
+    #[cfg(windows)]
+    desk.set_picker(picker(app.handle().clone()));
     let running = desk.clone();
     tauri::async_runtime::spawn(async move { running.run().await });
     let handle = app.handle().clone();
@@ -82,6 +85,33 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("error: cannot start at login: {error}");
     }
     Ok(())
+}
+
+/// Windows' folder dialog, over the window. It is opened on the main thread, which owns the
+/// window, and the desk waits for it off that thread.
+#[cfg(windows)]
+fn picker(app: AppHandle) -> player_two_desk::Picker {
+    std::sync::Arc::new(move || {
+        let app = app.clone();
+        Box::pin(async move {
+            let waited = tauri::async_runtime::spawn_blocking(move || {
+                let (picked, heard) = std::sync::mpsc::channel();
+                let window = app.get_webview_window("main");
+                app.run_on_main_thread(move || {
+                    let mut dialog = rfd::FileDialog::new().set_title("Share a folder");
+                    if let Some(window) = &window {
+                        dialog = dialog.set_parent(window);
+                    }
+                    let folder = dialog.pick_folder();
+                    // The desk stopped waiting only if the app is going.
+                    let _ = picked.send(folder.map(|path| path.to_string_lossy().into_owned()));
+                })
+                .ok()?;
+                heard.recv().ok().flatten()
+            });
+            waited.await.ok().flatten()
+        })
+    })
 }
 
 /// Whether a URL is the app's own page, which is all the window may show.

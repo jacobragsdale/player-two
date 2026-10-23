@@ -1,10 +1,9 @@
-/** The settings page: where the person's machine runs requests, and the checkouts they share, with ones found under their dev folders offered. WSL is mentioned only to someone who has it. */
+/** The settings page: where the person's machine runs requests, and the folders they share, each picked with the folder dialog. WSL is mentioned only to someone who has it. */
 
 import { useCallback, useEffect, useState } from "react";
-import type { JSX, SyntheticEvent } from "react";
+import type { JSX } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 
 import type { AgentInfo, AgentKind, Folder, PlacesView, RunsIn } from "./desk.ts";
 import { ask, problem } from "./deskClient.ts";
@@ -126,19 +125,8 @@ function NoAgent({ onLook }: { readonly onLook: () => void }): JSX.Element {
   );
 }
 
-function FolderRow({
-  folder,
-  wsl,
-  action,
-  label,
-  onAct
-}: {
-  readonly folder: Folder;
-  readonly wsl: boolean;
-  readonly action: string;
-  readonly label: string;
-  readonly onAct: () => void;
-}): JSX.Element {
+/** One shared folder, with the button that stops sharing it. */
+function FolderRow({ folder, wsl, onStop }: { readonly folder: Folder; readonly wsl: boolean; readonly onStop: () => void }): JSX.Element {
   return (
     <li className="flex items-center gap-2 py-1">
       <span className="font-medium">{folder.name}</span>
@@ -146,8 +134,8 @@ function FolderRow({
         {folder.path}
         {wsl ? ` · ${where(folder.runs_in)}` : ""}
       </span>
-      <Button type="button" variant="ghost" size="xs" className="ml-auto" aria-label={label} onClick={onAct}>
-        {action}
+      <Button type="button" variant="ghost" size="xs" className="ml-auto" aria-label={`Stop sharing ${folder.name}`} onClick={onStop}>
+        Stop sharing
       </Button>
     </li>
   );
@@ -155,9 +143,7 @@ function FolderRow({
 
 export function Settings({ me, onBack }: { readonly me: string; readonly onBack: () => void }): JSX.Element {
   const [places, setPlaces] = useState<PlacesView | null>(null);
-  const [suggestions, setSuggestions] = useState<readonly Folder[] | null>(null);
-  const [path, setPath] = useState("");
-  const [runsIn, setRunsIn] = useState<RunsIn>("windows");
+  const [picking, setPicking] = useState(false);
   const [error, setError] = useState("");
 
   const load = useCallback(() => {
@@ -172,22 +158,7 @@ export function Settings({ me, onBack }: { readonly me: string; readonly onBack:
       }
     );
   }, []);
-  const look = useCallback(() => {
-    ask({ type: "suggestions" }).then(
-      (response) => {
-        if (response.type === "suggestions") {
-          setSuggestions(response.folders);
-        }
-      },
-      () => {
-        setSuggestions([]);
-      }
-    );
-  }, []);
-  useEffect(() => {
-    load();
-    look();
-  }, [load, look]);
+  useEffect(load, [load]);
 
   /** Sends a change, then shows the page as it now stands. */
   const change = (request: Parameters<typeof ask>[0], then?: () => void): void => {
@@ -196,18 +167,19 @@ export function Settings({ me, onBack }: { readonly me: string; readonly onBack:
       () => {
         then?.();
         load();
-        look();
       },
       (failure: unknown) => {
+        then?.();
         setError(problem(failure));
       }
     );
   };
 
-  const add = (event: SyntheticEvent<HTMLFormElement>): void => {
-    event.preventDefault();
-    change({ type: "add_folder", path, runs_in: runsIn }, () => {
-      setPath("");
+  /** Opens the folder dialog; the desk shares what is picked. */
+  const pick = (): void => {
+    setPicking(true);
+    change({ type: "pick_folder" }, () => {
+      setPicking(false);
     });
   };
 
@@ -259,59 +231,28 @@ export function Settings({ me, onBack }: { readonly me: string; readonly onBack:
       </p>
 
       <h2 className={HEADING}>Shared folders</h2>
-      {places.folders.length === 0 && <p className="text-muted-foreground">None yet. Share a checkout so teammates can ask about it as @{me}/name.</p>}
+      {places.folders.length === 0 && <p className="text-muted-foreground">None yet. Share a folder so teammates can ask about it as @{me}/name.</p>}
       <ul>
         {places.folders.map((folder) => (
           <FolderRow
             key={folder.name}
             folder={folder}
             wsl={wsl}
-            action="Stop sharing"
-            label={`Stop sharing ${folder.name}`}
-            onAct={() => {
+            onStop={() => {
               change({ type: "remove_folder", name: folder.name });
             }}
           />
         ))}
       </ul>
-      <form className="mt-2 flex items-center gap-2" onSubmit={add}>
-        <Input
-          className="flex-1"
-          aria-label="Folder to share"
-          placeholder={wsl ? "C:\\dev\\repo, or /home/you/dev/repo" : "C:\\dev\\repo"}
-          value={path}
-          onChange={(event) => {
-            setPath(event.target.value);
-          }}
-        />
-        <RunsInPicker label="Which system the folder is on" value={runsIn} distros={places.distros} onChange={setRunsIn} />
-        <Button type="submit" disabled={path.trim() === ""}>
-          Share
-        </Button>
-      </form>
+      <Button type="button" variant="outline" size="sm" className="mt-2" disabled={picking} onClick={pick}>
+        {picking ? "Picking…" : "Share a folder…"}
+      </Button>
+      {wsl && <p className="mt-1 text-xs text-muted-foreground">A folder in WSL is under Linux in the dialog&rsquo;s side panel.</p>}
       {error !== "" && (
         <p role="alert" className="mt-2 text-destructive">
           {error}
         </p>
       )}
-
-      <h2 className={HEADING}>Found in your dev folders</h2>
-      {suggestions === null && <p className="text-muted-foreground">Looking…</p>}
-      {suggestions?.length === 0 && <p className="text-muted-foreground">Nothing more to share.</p>}
-      <ul>
-        {suggestions?.map((folder) => (
-          <FolderRow
-            key={`${folder.runs_in}:${folder.path}`}
-            folder={folder}
-            wsl={wsl}
-            action="Share"
-            label={`Share ${folder.name}`}
-            onAct={() => {
-              change({ type: "add_folder", path: folder.path, runs_in: folder.runs_in });
-            }}
-          />
-        ))}
-      </ul>
     </main>
   );
 }

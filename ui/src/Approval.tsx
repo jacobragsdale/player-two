@@ -84,7 +84,7 @@ function Warnings({ mode, keepGoing, asker, dirty }: { readonly mode: Mode; read
         {mode === "full" ? " In full mode it changes things without asking anyone." : ""}
         {keepGoing ? ` ${asker}'s follow-ups here run without asking you, until you press Stop or the thread is quiet for an hour.` : ""}
       </p>
-      {dirty && <p className="text-xs text-warn">This checkout has changes you have not committed; the agent works among them.</p>}
+      {dirty && <p className="text-xs text-warn">This folder has changes not committed to git; the agent works among them.</p>}
     </>
   );
 }

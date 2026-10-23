@@ -119,7 +119,7 @@ body: string } |
 /**  Which. */
 chat: ChatId };
 
-/**  One shared checkout. */
+/**  One shared folder. */
 export type Folder = {
 	/**  The name it is tagged by: `@me/name`. */
 	name: PlaceName,
@@ -200,19 +200,19 @@ export type PersonName = string;
 export type PlaceInfo = {
 	/**  Its name. */
 	name: PlaceName,
-	/**  Machine or checkout. */
+	/**  Machine or folder. */
 	kind: PlaceKind,
 };
 
-/**  Whether a place is a machine or a checkout. */
+/**  Whether a place is a machine or a shared folder. */
 export type PlaceKind = 
 /**  The person's machine. */
 "machine" | 
-/**  One of their shared checkouts. */
+/**  One of their shared folders. The wire calls it `repo`. */
 "repo";
 
 /**
- *  Where an agent can run for someone: `machine`, or one of their shared checkouts, named by up
+ *  Where an agent can run for someone: `machine`, or one of their shared folders, named by up
  *  to 64 lowercase letters, digits, `.`, `_` or `-`, starting with a letter or digit.
  */
 export type PlaceName = string;
@@ -221,7 +221,7 @@ export type PlaceName = string;
 export type PlacesView = {
 	/**  Where `@me` runs by default. */
 	machine_runs_in: RunsIn,
-	/**  The checkouts shared. */
+	/**  The folders shared. */
 	folders: Folder[],
 	/**  The WSL distros with an agent in them; none without WSL, or with no agent in it. */
 	distros: string[],
@@ -311,15 +311,12 @@ name: string } |
 { type: "update" } | 
 /**  Asks for the person's places. */
 { type: "places" } | 
-/**  Asks for checkouts worth sharing, found under `dev` folders. */
-{ type: "suggestions" } | 
-/**  Shares a checkout. */
-{ type: "add_folder"; 
-/**  Where it is: a Windows path, or a Linux path in a WSL distro. */
-path: string; 
-/**  Which system it is on. */
-runs_in: RunsIn } | 
-/**  Stops sharing a checkout. */
+/**
+ *  Opens the folder dialog, and shares the folder picked. A folder picked through
+ *  `\\wsl.localhost` is shared in its distro.
+ */
+{ type: "pick_folder" } | 
+/**  Stops sharing a folder. */
 { type: "remove_folder"; 
 /**  Its name. */
 name: PlaceName } | 
@@ -331,8 +328,8 @@ name: PlaceName } |
 /**  Windows, or a WSL distro. */
 runs_in: RunsIn } | 
 /**
- *  Asks what the approval card for a place needs: where it may run, and whether a checkout
- *  has changes not committed.
+ *  Asks what the approval card for a place needs: where it may run, and whether a git
+ *  checkout has changes not committed.
  */
 { type: "approval"; 
 /**  The place tagged. */
@@ -375,13 +372,13 @@ export type Response =
 /**  The answer to [`Request::Hello`]. */
 ({ type: "hello"; 
 /**  The version the hub, the app and the desk all share. */
-version: string }) & { choices?: never; dirty?: never; folders?: never; joined?: never; message?: never; ready?: never; runs_in?: never; suggested_name?: never } | 
+version: string }) & { choices?: never; dirty?: never; joined?: never; message?: never; ready?: never; runs_in?: never; suggested_name?: never } | 
 /**  The answer to [`Request::Setup`]. */
 ({ type: "setup"; 
 /**  The name this machine joined under, once it has. */
 joined: PersonName | null; 
 /**  The name to offer, from the Windows user name. */
-suggested_name: string | null }) & { choices?: never; dirty?: never; folders?: never; message?: never; ready?: never; runs_in?: never; version?: never } | 
+suggested_name: string | null }) & { choices?: never; dirty?: never; message?: never; ready?: never; runs_in?: never; version?: never } | 
 /**  The answer to [`Request::Overview`]. */
 {
 	type: "overview",
@@ -400,20 +397,16 @@ suggested_name: string | null }) & { choices?: never; dirty?: never; folders?: n
 choices: RunsIn[]; 
 /**  Where it runs unless the owner picks another. */
 runs_in: RunsIn; 
-/**  Whether a checkout has changes not committed, which an edit would run among. */
-dirty: boolean }) & { folders?: never; joined?: never; message?: never; ready?: never; suggested_name?: never; version?: never } | 
+/**  Whether a git checkout has changes not committed, which an edit would run among. */
+dirty: boolean }) & { joined?: never; message?: never; ready?: never; suggested_name?: never; version?: never } | 
 /**  The answer to [`Request::CheckAgent`]. */
 ({ type: "checked"; 
 /**  Whether the agent opened a session. */
 ready: boolean; 
 /**  What was found, in words. */
-message: string }) & { choices?: never; dirty?: never; folders?: never; joined?: never; runs_in?: never; suggested_name?: never; version?: never } | 
-/**  The answer to [`Request::Suggestions`]. */
-({ type: "suggestions"; 
-/**  Checkouts not shared yet. */
-folders: Folder[] }) & { choices?: never; dirty?: never; joined?: never; message?: never; ready?: never; runs_in?: never; suggested_name?: never; version?: never } | 
+message: string }) & { choices?: never; dirty?: never; joined?: never; runs_in?: never; suggested_name?: never; version?: never } | 
 /**  The request was done, and there is nothing more to say. */
-({ type: "done" }) & { choices?: never; dirty?: never; folders?: never; joined?: never; message?: never; ready?: never; runs_in?: never; suggested_name?: never; version?: never };
+({ type: "done" }) & { choices?: never; dirty?: never; joined?: never; message?: never; ready?: never; runs_in?: never; suggested_name?: never; version?: never };
 
 /**  How a run stands. */
 export type RunState = 

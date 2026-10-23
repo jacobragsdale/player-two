@@ -9,7 +9,7 @@ export function typedTag(before: string): string | null {
   return found?.[1] ?? null;
 }
 
-/** What can be tagged, `name` for a machine and `name/place` for a checkout, matching what was typed: the chat's members first, then everyone else, each person's machine before their checkouts. */
+/** What can be tagged, `name` for a machine and `name/place` for a shared folder, matching what was typed: the chat's members first, then everyone else, each person's machine before their folders. */
 export function candidates(typed: string, people: readonly Person[], members: readonly string[]): string[] {
   const rank = (person: Person): number => (members.includes(person.name) ? 0 : 1);
   const ordered = [...people].sort((a, b) => {

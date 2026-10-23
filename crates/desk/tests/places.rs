@@ -1,11 +1,25 @@
 mod common;
 
+use std::sync::{Arc, Mutex};
+
 use common::{Hub, overview, until};
 use player_two_core::event::RunsIn;
+use player_two_desk::Desk;
 use player_two_desk::ui::{Request, Response};
 
+/// Gives the desk a folder dialog that picks whatever `picked` holds when it opens.
+fn dialog(desk: &Desk) -> Arc<Mutex<Option<String>>> {
+    let picked = Arc::new(Mutex::new(None));
+    let held = Arc::clone(&picked);
+    desk.set_picker(Arc::new(move || {
+        let folder = held.lock().expect("not poisoned").clone();
+        Box::pin(async move { folder })
+    }));
+    picked
+}
+
 #[tokio::test]
-async fn a_shared_checkout_is_named_by_its_remote_and_advertised() {
+async fn a_picked_checkout_is_named_by_its_remote_and_advertised() {
     let hub = Hub::start().await;
     let alice = hub.joined("alice").await;
     let bob = hub.joined("bob").await;
@@ -31,29 +45,16 @@ async fn a_shared_checkout_is_named_by_its_remote_and_advertised() {
         assert!(status.success());
     }
     let path = path.to_string_lossy().into_owned();
+    let picked = dialog(&alice);
 
-    let missing = alice
-        .handle(Request::AddFolder {
-            path: format!("{path}-not-there"),
-            runs_in: RunsIn::Windows,
-        })
-        .await;
+    // Cancelling the dialog shares nothing.
+    assert_eq!(alice.handle(Request::PickFolder).await, Ok(Response::Done));
+    *picked.lock().expect("not poisoned") = Some(format!("{path}-not-there"));
+    let missing = alice.handle(Request::PickFolder).await;
     assert!(missing.is_err_and(|error| error.contains("there is no folder")));
-    assert_eq!(
-        alice
-            .handle(Request::AddFolder {
-                path: path.clone(),
-                runs_in: RunsIn::Windows
-            })
-            .await,
-        Ok(Response::Done)
-    );
-    let again = alice
-        .handle(Request::AddFolder {
-            path: path.clone(),
-            runs_in: RunsIn::Windows,
-        })
-        .await;
+    *picked.lock().expect("not poisoned") = Some(path.clone());
+    assert_eq!(alice.handle(Request::PickFolder).await, Ok(Response::Done));
+    let again = alice.handle(Request::PickFolder).await;
     assert!(again.is_err_and(|error| error.contains("shared already")));
 
     let Ok(Response::Places(places)) = alice.handle(Request::Places).await else {
@@ -61,6 +62,7 @@ async fn a_shared_checkout_is_named_by_its_remote_and_advertised() {
     };
     assert_eq!(places.folders.len(), 1);
     assert_eq!(places.folders[0].name.as_str(), "uploader");
+    assert_eq!(places.folders[0].runs_in, RunsIn::Windows);
     assert_eq!(places.machine_runs_in, RunsIn::Windows);
 
     // Changing her places tells everyone to fetch the people again.
@@ -92,4 +94,12 @@ async fn a_shared_checkout_is_named_by_its_remote_and_advertised() {
     };
     assert!(places.folders.is_empty());
     let _ = overview(&alice).await;
+}
+
+#[tokio::test]
+async fn a_desk_without_a_dialog_says_so() {
+    let hub = Hub::start().await;
+    let alice = hub.joined("alice").await;
+    let picked = alice.handle(Request::PickFolder).await;
+    assert!(picked.is_err_and(|error| error.contains("folder dialog")));
 }
