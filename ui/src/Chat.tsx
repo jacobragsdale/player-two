@@ -123,7 +123,7 @@ export function Chat({ chat, me, thread, onThread, onClose, onLeft, mode }: Prop
             {item.id === view.first_unread && (
               <p className="mx-4 my-1 flex items-center gap-2 text-xs text-warn before:flex-1 before:border-t before:border-warn after:flex-1 after:border-t after:border-warn">new</p>
             )}
-            <Message item={item} me={me} onThread={thread === null ? onThread : null} />
+            <Message item={item} me={me} chat={chat} onThread={thread === null ? onThread : null} />
           </div>
         ))}
       </div>

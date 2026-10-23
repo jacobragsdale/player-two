@@ -33,7 +33,7 @@ You tag your own agent and watch it work, on Windows or in WSL. [Modes](protocol
   - Stop ends the run.
 - [x] **P4-8 One at a time.** A place that is running something says so, and a second tag of it waits.
 - [ ] **P4-9 The setup check.** For each place, the window checks for its agent and whether it is signed in. If not, it gives the one command to install it or sign in (for Cursor on Windows, `irm 'https://cursor.com/install?win32=true' | iex` and then `agent login`). Lift the idea, not the code, from v0.7.1's `src/desk/doctor.ts`.
-- [ ] **P4-10 The run in the window.**
+- [x] **P4-10 The run in the window.**
   - Under the message: the state line, the live activity feed with outputs, and the answer as Markdown.
   - In ask mode, prompt cards with Allow and Reject.
 - [ ] **P4-11 (workstation)** Run your own Cursor on Windows and in WSL, then Copilot, then Claude Code through its adapter, at each mode. Write down what each agent asks permission for, and what it does without asking, under "Notes".

@@ -4,7 +4,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, test } from "vitest";
 
 import { Markdown } from "./Markdown.tsx";
+import type { RunView } from "./desk.ts";
 import { Message } from "./Message.tsx";
+import { Run } from "./Run.tsx";
 import { Text } from "./Text.tsx";
 
 const HOSTILE = [
@@ -36,7 +38,7 @@ describe("a person's message", () => {
 
   test("keeps its author and text inert in the message around it", () => {
     const item = { id: 1, author: '<img src=x onerror="pwned()">', ts: 0, text: HOSTILE, tags: [], replies: 0, runs: [], waiting: [] };
-    const markup = renderToStaticMarkup(<Message item={item} me="alice" onThread={null} />);
+    const markup = renderToStaticMarkup(<Message item={item} me="alice" chat="#ops" onThread={null} />);
     expect(dangerous(markup)).toBeNull();
   });
 });
@@ -60,5 +62,31 @@ describe("an agent's Markdown", () => {
     expect(markup).toContain('href="https://example.com"');
     expect(markup).not.toMatch(/href="(javascript|data):/);
     expect(markup).toContain('rel="noreferrer"');
+  });
+});
+
+describe("an agent's run", () => {
+  test("draws what it printed, what it asks and what it answered without running any of it", () => {
+    const run: RunView = {
+      id: 7,
+      thread: 6,
+      owner: "bob",
+      place: "machine",
+      runs_in: "windows",
+      mode: "ask",
+      steps_by: "owner",
+      state: "working",
+      reason: null,
+      activity: [{ id: "t1", verb: "ran", object: "<img src=x onerror=pwned()>", outcome: "exit 0", output: HOSTILE }],
+      prompts: [{ id: "p1", what: "<script>window.pwned = 9</script>", allow: null, by: null }],
+      result: `**fixed**\n\n${HOSTILE}`,
+      may_answer: true,
+      mine: false
+    };
+    const markup = renderToStaticMarkup(<Run run={run} chat="alice+bob" me="alice" />);
+    expect(dangerous(markup)).toBeNull();
+    expect(markup).toContain("<strong>fixed</strong>");
+    expect(markup).toContain("bob&#x27;s agent is working on bob&#x27;s computer");
+    expect(markup).toContain("Allow");
   });
 });

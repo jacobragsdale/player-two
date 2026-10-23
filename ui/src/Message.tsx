@@ -4,7 +4,8 @@ import type { JSX } from "react";
 
 import { Button } from "@/components/ui/button";
 
-import type { Item } from "./desk.ts";
+import type { ChatId, Item } from "./desk.ts";
+import { Run, Waiting } from "./Run.tsx";
 import { Text } from "./Text.tsx";
 
 /** The time of day, or the date for anything before today. */
@@ -14,7 +15,7 @@ export function when(ts: number): string {
   return today ? at.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : at.toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
-export function Message({ item, me, onThread }: { readonly item: Item; readonly me: string; readonly onThread: ((root: number) => void) | null }): JSX.Element {
+export function Message({ item, me, chat, onThread }: { readonly item: Item; readonly me: string; readonly chat: ChatId; readonly onThread: ((root: number) => void) | null }): JSX.Element {
   const open = (): void => {
     onThread?.(item.id);
   };
@@ -32,6 +33,10 @@ export function Message({ item, me, onThread }: { readonly item: Item; readonly 
         )}
       </header>
       <Text text={item.text} />
+      {item.runs.map((run) => (
+        <Run key={run.id} run={run} chat={chat} me={me} />
+      ))}
+      <Waiting tags={item.waiting} me={me} author={item.author} />
       {onThread !== null && item.replies > 0 && (
         <Button type="button" variant="link" size="xs" className="h-auto px-0 text-tag" onClick={open}>
           {item.replies} {item.replies === 1 ? "reply" : "replies"}
