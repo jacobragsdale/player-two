@@ -5,14 +5,37 @@ use std::collections::{BTreeMap, HashSet};
 
 use player_two_core::api::{ChannelInfo, Person, Presence};
 use player_two_core::event::{
-    Body, Ending, Event, EventId, Message, RunDeclined, RunWithdrawn, StepsBy,
+    Body, Ending, Event, EventId, Message, RunAccepted, RunDeclined, RunWithdrawn, StepsBy,
 };
-use player_two_core::names::{ChatId, PersonName};
+use player_two_core::names::{ChatId, PersonName, PlaceName};
 
 use crate::ui::{ChatSummary, ChatView, Item, PromptView, RunState, RunView};
 
 /// How many characters of a message a notification shows.
 const NOTICE_LENGTH: usize = 200;
+
+/// Something worth a notification.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Notice {
+    /// Who, and where.
+    pub title: String,
+    /// The start of what it says.
+    pub body: String,
+    /// The thread it is in, which clicking it opens.
+    pub thread: Option<EventId>,
+    /// For a follow-up, the thread and place of the run it follows: when keep going runs it,
+    /// there is nothing to click, so nothing to notify.
+    pub follows: Option<(EventId, PlaceName)>,
+}
+
+/// The start of a text, as a notification shows it.
+fn shortened(text: &str) -> String {
+    let mut short: String = text.chars().take(NOTICE_LENGTH).collect();
+    if text.chars().count() > NOTICE_LENGTH {
+        short.push('…');
+    }
+    short
+}
 
 /// Everything the desk has seen of the person's chats.
 #[derive(Debug, Clone)]
@@ -153,31 +176,105 @@ impl Chats {
             .insert(event.id, event);
     }
 
-    /// What to notify the person of, if `event` is a direct message to them or tags them or one
-    /// of their places: a title and the start of the text.
+    /// What to notify the person of, if anything: a direct message to them, a tag of them or
+    /// their places, a follow-up waiting for their click, a step waiting for their yes, or the end
+    /// of a run they asked for.
     #[must_use]
-    pub fn notice(&self, event: &Event) -> Option<(String, String)> {
-        let Body::Message(message) = &event.body else {
-            return None;
-        };
+    pub fn notice(&self, event: &Event) -> Option<Notice> {
+        match &event.body {
+            Body::Message(message) => self.message_notice(event, message),
+            Body::RunPrompt(prompt) => {
+                let (owner, accepted, asker) = self.run_of(&event.chat, prompt.run)?;
+                let answers = match accepted.steps_by {
+                    StepsBy::Owner => &owner,
+                    StepsBy::Asker => &asker,
+                };
+                (answers == &self.me).then(|| Notice {
+                    title: format!("{} waits for your yes", self.whose_agent(&owner)),
+                    body: shortened(&prompt.what),
+                    thread: event.thread,
+                    follows: None,
+                })
+            }
+            Body::RunEnded(ended) => {
+                let (owner, _, asker) = self.run_of(&event.chat, ended.run)?;
+                if asker != self.me {
+                    return None;
+                }
+                let how = match ended.how {
+                    Ending::Done => "finished",
+                    Ending::Stopped => "was stopped",
+                    Ending::Failed => "failed",
+                };
+                let result =
+                    self.events
+                        .get(&event.chat)?
+                        .values()
+                        .find_map(|seen| match &seen.body {
+                            Body::RunResult(result) if result.run == ended.run => {
+                                Some(result.text.clone())
+                            }
+                            _ => None,
+                        });
+                Some(Notice {
+                    title: format!("{} {how}", self.whose_agent(&owner)),
+                    body: shortened(&result.or_else(|| ended.reason.clone()).unwrap_or_default()),
+                    thread: event.thread,
+                    follows: None,
+                })
+            }
+            _ => None,
+        }
+    }
+
+    /// What to notify of a message: one to the person directly, one tagging them, or a follow-up
+    /// of a run of theirs, which waits for their click.
+    fn message_notice(&self, event: &Event, message: &Message) -> Option<Notice> {
         if event.author == self.me {
             return None;
         }
         let direct = event.chat.is_between(&self.me);
         let tagged = message.tags.iter().any(|tag| tag.person == self.me);
-        if !direct && !tagged {
+        let follows = self
+            .followed(event)
+            .filter(|run| run.owner == self.me)
+            .map(|run| (run.thread, run.place));
+        if !direct && !tagged && follows.is_none() {
             return None;
         }
         let title = if direct {
             event.author.to_string()
-        } else {
+        } else if tagged {
             format!("{} in {}", event.author, self.title(&event.chat))
+        } else {
+            format!("{} follows up in {}", event.author, self.title(&event.chat))
         };
-        let mut body: String = message.text.chars().take(NOTICE_LENGTH).collect();
-        if message.text.chars().count() > NOTICE_LENGTH {
-            body.push('…');
+        Some(Notice {
+            title,
+            body: shortened(&message.text),
+            thread: event.thread,
+            follows,
+        })
+    }
+
+    /// A run's owner, how it was accepted, and who asked for it.
+    fn run_of(&self, chat: &ChatId, run: EventId) -> Option<(PersonName, RunAccepted, PersonName)> {
+        let events = self.events.get(chat)?;
+        let accepted = events.get(&run)?;
+        let Body::RunAccepted(body) = &accepted.body else {
+            return None;
+        };
+        let asker = events.get(&body.request)?.author.clone();
+        Some((accepted.author.clone(), body.clone(), asker))
+    }
+
+    /// "Your agent", or "bob's agent".
+    fn whose_agent(&self, owner: &PersonName) -> String {
+        if owner == &self.me {
+            "Your agent".to_owned()
+        } else {
+            format!("{owner}'s agent")
         }
-        Some((title, body))
     }
 
     /// One event of a chat.
@@ -604,8 +701,8 @@ mod tests {
     use std::collections::BTreeMap;
 
     use player_two_core::api::{ChannelInfo, Person, Presence};
-    use player_two_core::event::{Body, Event, EventId, Message};
-    use player_two_core::names::{ChannelName, ChatId, PersonName};
+    use player_two_core::event::{Body, Ending, Event, EventId, Message, RunAccepted, StepsBy};
+    use player_two_core::names::{ChannelName, ChatId, PersonName, PlaceName};
 
     use super::Chats;
 
@@ -728,7 +825,9 @@ mod tests {
     fn direct_messages_and_tags_of_me_are_worth_a_notice() {
         let (chats, ops, direct) = chats();
         assert_eq!(
-            chats.notice(&message(1, &direct, "bob", None, "hi")),
+            chats
+                .notice(&message(1, &direct, "bob", None, "hi"))
+                .map(|notice| (notice.title, notice.body)),
             Some(("bob".to_owned(), "hi".to_owned()))
         );
         assert_eq!(
@@ -746,11 +845,126 @@ mod tests {
                 place: player_two_core::names::PlaceName::machine(),
             });
         }
-        let (title, body) = chats
+        let notice = chats
             .notice(&tagged)
             .expect("a tag of alice is worth a notice");
-        assert_eq!(title, "bob in #ops");
-        assert_eq!(body.chars().count(), 201);
+        assert_eq!(notice.title, "bob in #ops");
+        assert_eq!(notice.body.chars().count(), 201);
+    }
+
+    /// An event of a run: its kind's body, by `author`, in the thread of message 1.
+    fn run_event(id: i64, chat: &ChatId, author: &str, body: Body) -> Event {
+        Event {
+            id: EventId(id),
+            chat: chat.clone(),
+            thread: Some(EventId(1)),
+            author: name(author),
+            ts: id * 1000,
+            body,
+        }
+    }
+
+    /// Bob asks alice's machine in #ops (message 1), and alice lets it run (event 2).
+    fn a_run(steps_by: StepsBy) -> (Chats, ChatId) {
+        let (mut chats, ops, _) = chats();
+        let mut asked = message(1, &ops, "bob", None, "@alice fix pip");
+        if let Body::Message(text) = &mut asked.body {
+            text.tags.push(player_two_core::event::Tag {
+                person: name("alice"),
+                place: PlaceName::machine(),
+            });
+        }
+        chats.apply(asked);
+        chats.apply(run_event(
+            2,
+            &ops,
+            "alice",
+            Body::RunAccepted(RunAccepted {
+                request: EventId(1),
+                place: PlaceName::machine(),
+                runs_in: player_two_core::event::RunsIn::Windows,
+                mode: player_two_core::event::Mode::Ask,
+                steps_by,
+                keep_going: false,
+            }),
+        ));
+        (chats, ops)
+    }
+
+    #[test]
+    fn a_step_notifies_whoever_answers_it() {
+        let prompt = |ops: &ChatId| {
+            run_event(
+                3,
+                ops,
+                "alice",
+                Body::RunPrompt(player_two_core::event::RunPrompt {
+                    run: EventId(2),
+                    prompt: "p1".to_owned(),
+                    what: "pip config set".to_owned(),
+                }),
+            )
+        };
+        let (chats, ops) = a_run(StepsBy::Owner);
+        let notice = chats.notice(&prompt(&ops)).expect("alice answers it");
+        assert_eq!(notice.title, "Your agent waits for your yes");
+        assert_eq!(notice.thread, Some(EventId(1)));
+        // Handed to bob, the step is his to answer, so alice's desk keeps quiet.
+        let (chats, ops) = a_run(StepsBy::Asker);
+        assert_eq!(chats.notice(&prompt(&ops)), None);
+    }
+
+    #[test]
+    fn the_end_of_a_run_notifies_its_asker() {
+        let (mut chats, ops) = a_run(StepsBy::Owner);
+        chats.apply(run_event(
+            3,
+            &ops,
+            "alice",
+            Body::RunResult(player_two_core::event::RunResult {
+                run: EventId(2),
+                text: "Fixed the proxy.".to_owned(),
+            }),
+        ));
+        let ended = run_event(
+            4,
+            &ops,
+            "alice",
+            Body::RunEnded(player_two_core::event::RunEnded {
+                run: EventId(2),
+                how: Ending::Done,
+                reason: None,
+            }),
+        );
+        assert_eq!(chats.notice(&ended), None, "alice did not ask");
+        let mut bobs = Chats::new(name("bob"), BTreeMap::new());
+        for id in 1..=3 {
+            bobs.apply(chats.event(&ops, EventId(id)).expect("seen").clone());
+        }
+        let notice = bobs.notice(&ended).expect("bob asked");
+        assert_eq!(
+            (notice.title.as_str(), notice.body.as_str()),
+            ("alice's agent finished", "Fixed the proxy.")
+        );
+    }
+
+    #[test]
+    fn a_follow_up_notifies_the_runs_owner() {
+        let (mut chats, ops) = a_run(StepsBy::Owner);
+        chats.apply(run_event(
+            3,
+            &ops,
+            "alice",
+            Body::RunEnded(player_two_core::event::RunEnded {
+                run: EventId(2),
+                how: Ending::Done,
+                reason: None,
+            }),
+        ));
+        let follow_up = message(4, &ops, "bob", Some(1), "and the other one");
+        let notice = chats.notice(&follow_up).expect("alice decides it");
+        assert_eq!(notice.title, "bob follows up in #ops");
+        assert_eq!(notice.follows, Some((EventId(1), PlaceName::machine())));
     }
 
     #[test]

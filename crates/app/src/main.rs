@@ -68,10 +68,15 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let handle = app.handle().clone();
     tauri::async_runtime::spawn(async move {
         while let Some(event) = told.recv().await {
-            if let Event::Notify { chat, title, body } = &event
+            if let Event::Notify {
+                chat,
+                thread,
+                title,
+                body,
+            } = &event
                 && !notify::looking(&handle)
             {
-                notify::show(&handle, chat.clone(), title, body);
+                notify::show(&handle, chat.clone(), *thread, title, body);
             }
             // A window still loading misses nothing it needs: it asks for everything first.
             let _ = handle.emit("desk", event);

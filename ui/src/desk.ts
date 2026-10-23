@@ -111,20 +111,25 @@ export type Event =
 /**  Which. */
 chat: ChatId } | 
 /**
- *  Something worth a notification arrived: a direct message, or a tag of the person or
- *  their places. The app shows it while the window is not in front.
+ *  Something worth a notification arrived: a direct message, a tag of the person or their
+ *  places, a follow-up waiting for their click, a step waiting for their yes, or the end of
+ *  a run they asked for. The app shows it while the window is not in front.
  */
 { type: "notify"; 
 /**  Where. */
 chat: ChatId; 
+/**  The thread it is in, if any. */
+thread: number | null; 
 /**  Who, and where. */
 title: string; 
 /**  The start of what they said. */
 body: string } | 
-/**  The person clicked a notification: the window opens its chat. */
+/**  The person clicked a notification: the window opens its chat, and its thread. */
 { type: "open"; 
 /**  Which. */
-chat: ChatId };
+chat: ChatId; 
+/**  The thread, if any. */
+thread: number | null };
 
 /**  One message as the window draws it. */
 export type Item = {

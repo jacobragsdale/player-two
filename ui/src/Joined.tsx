@@ -26,8 +26,9 @@ export function Joined(): JSX.Element {
   // A clicked notification opens its chat.
   useDeskEvents((event) => {
     if (event.type === "open") {
+      setSettings(false);
       setOpen(event.chat);
-      setThread(null);
+      setThread(event.thread ?? null);
     }
   });
 

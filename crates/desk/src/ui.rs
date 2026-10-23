@@ -235,20 +235,25 @@ pub enum Event {
         /// Which.
         chat: ChatId,
     },
-    /// Something worth a notification arrived: a direct message, or a tag of the person or
-    /// their places. The app shows it while the window is not in front.
+    /// Something worth a notification arrived: a direct message, a tag of the person or their
+    /// places, a follow-up waiting for their click, a step waiting for their yes, or the end of
+    /// a run they asked for. The app shows it while the window is not in front.
     Notify {
         /// Where.
         chat: ChatId,
+        /// The thread it is in, if any.
+        thread: Option<EventId>,
         /// Who, and where.
         title: String,
         /// The start of what they said.
         body: String,
     },
-    /// The person clicked a notification: the window opens its chat.
+    /// The person clicked a notification: the window opens its chat, and its thread.
     Open {
         /// Which.
         chat: ChatId,
+        /// The thread, if any.
+        thread: Option<EventId>,
     },
 }
 

@@ -920,8 +920,17 @@ impl Desk {
                         });
                         self.tell(ui::Event::Chat { chat: chat.clone() });
                         self.tell(ui::Event::Overview);
-                        if let Some((title, body)) = notice {
-                            self.tell(ui::Event::Notify { chat, title, body });
+                        // A follow-up that keep going runs at once has nothing to click.
+                        let runs_by_itself = notice.as_ref().and_then(|notice| notice.follows.as_ref()).is_some_and(
+                            |(thread, place)| self.keeps_going(*thread, place) && self.busy(place).is_none(),
+                        );
+                        if let Some(notice) = notice.filter(|_| !runs_by_itself) {
+                            self.tell(ui::Event::Notify {
+                                chat,
+                                thread: notice.thread,
+                                title: notice.title,
+                                body: notice.body,
+                            });
                         }
                         self.keep_going(&follow_up).await;
                     }
