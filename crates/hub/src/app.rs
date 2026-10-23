@@ -10,10 +10,11 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use player_two_core::api::{
-    ApiError, ChannelInfo, JoinRequest, Joined, NewChannel, NewEvent, Person, PlaceInfo, PlaceKind,
-    Posted,
+    ApiError, ChannelInfo, JoinCodeReply, JoinRequest, Joined, NewChannel, NewEvent, Person,
+    PlaceInfo, PlaceKind, Posted, ResetRequest,
 };
 use player_two_core::event::{Event, EventId};
+use player_two_core::join_code::JoinCode;
 use player_two_core::names::{ChannelName, ChatId, PersonName};
 use rusqlite::OptionalExtension;
 use serde::Deserialize;
@@ -32,6 +33,8 @@ pub struct Config {
     pub join_token: String,
     /// The token for `/admin/*`.
     pub admin_token: String,
+    /// The hub's own address, as people reach it: for join codes and the update manifest.
+    pub url: String,
 }
 
 /// What every request can reach.
@@ -59,6 +62,8 @@ pub fn router(state: AppState) -> Router {
         .route("/stream", get(stream::stream))
         .route("/places", put(set_places))
         .route("/people", get(people))
+        .route("/admin/join-code", post(admin_join_code))
+        .route("/admin/reset", post(admin_reset))
         .with_state(state)
 }
 
@@ -413,4 +418,60 @@ async fn people(State(state): State<AppState>, _: Caller) -> Reply<Json<Vec<Pers
             })
             .collect(),
     ))
+}
+
+/// A request made with the admin token.
+#[derive(Debug, Clone, Copy)]
+pub struct Admin;
+
+impl FromRequestParts<AppState> for Admin {
+    type Rejection = Refusal;
+
+    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Reply<Self> {
+        match bearer(parts) {
+            Some(token) if same_token(token, &state.config.admin_token) => Ok(Self),
+            _ => Err(Refusal::new(
+                StatusCode::UNAUTHORIZED,
+                "that is not the hub's admin token",
+            )),
+        }
+    }
+}
+
+/// `POST /admin/join-code`.
+async fn admin_join_code(State(state): State<AppState>, _: Admin) -> Json<JoinCodeReply> {
+    let code = JoinCode {
+        hub: state.config.url.clone(),
+        token: state.config.join_token.clone(),
+    };
+    Json(JoinCodeReply {
+        code: code.encode(),
+    })
+}
+
+/// `POST /admin/reset`.
+async fn admin_reset(
+    State(state): State<AppState>,
+    _: Admin,
+    Input(request): Input<ResetRequest>,
+) -> Reply<StatusCode> {
+    let name = request.name;
+    let who = name.clone();
+    let changed = state
+        .db
+        .call(move |connection| {
+            Ok(connection.execute(
+                "UPDATE people SET token_sha256 = NULL WHERE name = ?1",
+                [who.as_str()],
+            )?)
+        })
+        .await?;
+    if changed == 0 {
+        return Err(Refusal::new(
+            StatusCode::NOT_FOUND,
+            "nobody of that name has joined",
+        ));
+    }
+    state.streams.close(&name);
+    Ok(StatusCode::NO_CONTENT)
 }

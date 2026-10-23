@@ -137,5 +137,6 @@ Every night at 03:00 UTC, the hub:
 | `PLAYER_TWO_URL` | none, required | The hub's own address, for join codes and the update manifest. |
 | `PLAYER_TWO_RETENTION_DAYS` | `30` | How long events are kept. |
 | `PLAYER_TWO_RELEASE` | `/app/release` | The folder holding the installer and its `.sig`. |
+| `PLAYER_TWO_PORT` | `8787` | Where the hub listens, and where the admin commands look for it. |
 
-`player-two-hub serve` runs the hub. `player-two-hub join-code` and `player-two-hub reset NAME` call the running hub at `http://127.0.0.1:8787` with `PLAYER_TWO_ADMIN_TOKEN`. In the cluster you run them as `kubectl exec deploy/player-two -- player-two-hub join-code`.
+`player-two-hub serve` runs the hub. `player-two-hub join-code` and `player-two-hub reset NAME` call the running hub at `http://127.0.0.1:<PLAYER_TWO_PORT>` with `PLAYER_TWO_ADMIN_TOKEN`. In the cluster you run them as `kubectl exec deploy/player-two -- player-two-hub join-code`.

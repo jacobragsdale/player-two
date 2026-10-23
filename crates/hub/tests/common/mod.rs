@@ -52,6 +52,7 @@ impl Hub {
             config: Arc::new(Config {
                 join_token: JOIN_TOKEN.to_owned(),
                 admin_token: ADMIN_TOKEN.to_owned(),
+                url: "https://hub.example".to_owned(),
             }),
             clock: clock.clone(),
             streams: Arc::new(Streams::default()),
