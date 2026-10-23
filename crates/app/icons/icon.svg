@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Two players: one solid, one outlined, side by side. Tauri's icon command makes every size from this. -->
+  <rect width="1024" height="1024" rx="224" fill="#7a3fc4"/>
+  <circle cx="380" cy="512" r="180" fill="#ffffff"/>
+  <circle cx="644" cy="512" r="160" fill="none" stroke="#ffffff" stroke-width="56"/>
+</svg>

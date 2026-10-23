@@ -1,4 +1,4 @@
-# The checks every commit is held to, on the platform everyone uses. The hashFiles guards keep it green until phase 0 has made each part; task P0-6 removes them and adds the app crate and the installer.
+# The checks every commit is held to, on the platform everyone uses. The hashFiles guards keep it green until phase 0 has made each part; task P0-6 removes them and adds the installer.
 name: CI
 
 on: push
@@ -30,6 +30,6 @@ jobs:
       - if: hashFiles('Cargo.toml') != ''
         run: cargo fmt --all --check
       - if: hashFiles('Cargo.toml') != ''
-        run: cargo clippy --workspace --exclude player-two-app --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
       - if: hashFiles('Cargo.toml') != ''
-        run: cargo test --workspace --exclude player-two-app
+        run: cargo test --workspace

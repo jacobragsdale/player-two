@@ -18,11 +18,11 @@ Find the first unticked task in the lowest-numbered phase file and continue from
   ```sh
   npm --prefix ui run check
   cargo fmt --all --check
-  cargo clippy --workspace --exclude player-two-app --all-targets -- -D warnings
-  cargo test --workspace --exclude player-two-app
+  cargo clippy --workspace --all-targets -- -D warnings
+  cargo test --workspace
   ```
 
-  Windows CI runs the same with the app crate included. Tick a task that touches the app crate or Windows-only code only after CI is green on your pushed branch.
+  The UI check comes first because the app crate embeds `ui/dist`. Windows CI runs the same. Tick a task that touches Windows-only code, or the app's behaviour on Windows, only after CI is green on your pushed branch.
 - Rust follows [Google's Rust style guide](https://google.github.io/styleguide/rustguide.html), except its Chrome- and Fuchsia-only rules. Here that means async on tokio, plain `#[test]` and `#[tokio::test]`, and a normal Cargo workspace. Use `anyhow` for errors in the two binaries. `unsafe` goes only in `crates/win`, and every block gets a `SAFETY:` comment.
 - The UI is strict TypeScript: no `any`, no `as` casts, no `!`, no `@ts-ignore`. Its types for talking to the desk are generated from Rust. Never write them by hand.
 - Do not weaken `rustfmt.toml`, the clippy command, `ui/tsconfig.json`, or the ESLint or Prettier configuration.

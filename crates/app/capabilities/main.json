@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main",
+  "description": "The window draws other people's text, so it may call nothing but what is listed here.",
+  "windows": ["main"],
+  "permissions": []
+}

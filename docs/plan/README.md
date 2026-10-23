@@ -22,7 +22,7 @@ Do the phases in order, and the tasks within each in order. A phase is finished 
 
 1. **One task, one commit.** Tick the task's box in the same commit. The subject is one plain sentence saying what changed.
 2. **Green before every commit.** Run the checks in [`AGENTS.md`](../../AGENTS.md). Zero warnings. Do not weaken any configuration to get there.
-3. **Windows CI is the check for Windows code.** This machine cannot run the app crate or the desk's Windows paths. Push your work branch (never `main`) and wait for CI to go green before ticking a task that touches them. Do not push for any other reason.
+3. **Windows CI is the check for Windows code.** This machine cannot run the desk's Windows paths or show the window. Push your work branch (never `main`) and wait for CI to go green before ticking a task that touches them. Do not push for any other reason.
 4. **Smallest thing that satisfies the task.** No crate or npm package the task does not need, no abstraction with one use, no setting for a value that never changes. Say in the commit why a new dependency is needed.
 5. **Each piece of logic leaves one test behind.** Prefer one scenario test against a real hub running in the test over many unit tests with mocks.
 6. **Lifting from v0.7.1** means reading the old code (`git show v0.7.1:<path>`) and writing what this design needs, not porting it line by line. Its behaviour around signing, grants, delegation, patches and repos-as-agents does not apply.
@@ -33,5 +33,5 @@ Do the phases in order, and the tasks within each in order. A phase is finished 
 ## Environment
 
 - Rust stable with clippy and rustfmt, and Node 26 with npm. Nothing needs root.
-- The app crate is not built here, because this machine lacks some of the Linux libraries it needs (the tray's appindicator and librsvg). Windows CI builds it.
+- The app crate builds here against WebKitGTK, but there is no display to run it on. Windows CI and the workstation tasks are where it runs.
 - The tests need no network access.

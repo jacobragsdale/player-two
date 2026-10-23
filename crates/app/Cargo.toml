@@ -4,5 +4,11 @@ version.workspace = true
 edition.workspace = true
 publish.workspace = true
 
+[build-dependencies]
+tauri-build = { version = "2.7", features = [] }
+
 [dependencies]
+anyhow = "1.0"
 player-two-desk.workspace = true
+tauri = { version = "2.12", features = [] }
+tauri-plugin-single-instance = "2.5"

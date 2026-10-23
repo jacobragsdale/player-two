@@ -12,3 +12,4 @@ ui/dist/
 
 # The installer, copied in before the hub's image is built
 deploy/release/
+crates/app/gen/
