@@ -19,10 +19,16 @@ pub fn command(program: &str) -> Command {
     command
 }
 
-/// Runs a command to its end and gives back what it printed, or `None` when it could not run or
-/// failed.
+/// How long one of the system's programs may take: a distro booting is the slowest.
+const RUNNING: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Runs a command to its end and gives back what it printed, or `None` when it could not run,
+/// failed, or took longer than a minute, when it is killed.
 pub async fn output(mut command: Command) -> Option<String> {
-    let output = command.output().await.ok()?;
+    let output = tokio::time::timeout(RUNNING, command.output())
+        .await
+        .ok()?
+        .ok()?;
     output.status.success().then(|| text(&output.stdout))
 }
 
@@ -48,17 +54,28 @@ pub fn text(bytes: &[u8]) -> String {
 /// Docker Desktop's own distros, which hold no one's work and are never searched or offered.
 const DOCKER_DESKTOP: [&str; 2] = ["docker-desktop", "docker-desktop-data"];
 
-/// The WSL distros installed, by name, but for Docker Desktop's. None on a system without WSL.
-pub async fn distros() -> Vec<String> {
+/// Whether a distro is one of Docker Desktop's own.
+#[must_use]
+pub fn is_docker_desktop(distro: &str) -> bool {
+    DOCKER_DESKTOP
+        .iter()
+        .any(|docker| distro.eq_ignore_ascii_case(docker))
+}
+
+/// The WSL distros installed, by name, but for Docker Desktop's: none on a system without WSL,
+/// and `None` when `wsl.exe` was there but could not say.
+pub async fn distros() -> Option<Vec<String>> {
     if !cfg!(windows) {
-        return Vec::new();
+        return Some(Vec::new());
     }
     let mut list = command("wsl.exe");
     list.args(["--list", "--quiet"]);
-    output(list)
-        .await
-        .map(|names| listed(&names))
-        .unwrap_or_default()
+    match tokio::time::timeout(RUNNING, list.output()).await {
+        Ok(Ok(listing)) if listing.status.success() => Some(listed(&text(&listing.stdout))),
+        // No `wsl.exe` at all is a system without WSL.
+        Ok(Err(error)) if error.kind() == std::io::ErrorKind::NotFound => Some(Vec::new()),
+        _ => None,
+    }
 }
 
 /// The distros in what `wsl.exe --list --quiet` printed, but for Docker Desktop's.
@@ -66,12 +83,7 @@ fn listed(names: &str) -> Vec<String> {
     names
         .lines()
         .map(|line| line.trim().trim_matches('\0').to_owned())
-        .filter(|line| !line.is_empty())
-        .filter(|line| {
-            !DOCKER_DESKTOP
-                .iter()
-                .any(|docker| line.eq_ignore_ascii_case(docker))
-        })
+        .filter(|line| !line.is_empty() && !is_docker_desktop(line))
         .collect()
 }
 

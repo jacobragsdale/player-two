@@ -149,9 +149,9 @@ pub async fn on_this_system() -> Vec<Found> {
 /// Marks the start of what the WSL script prints, past anything a profile prints first.
 const MARK: &str = "--player-two--";
 
-/// The agents in a WSL distro. The `PATH` is the one an interactive login shell has, since that
-/// is where version managers such as nvm put Node.
-pub async fn in_distro(distro: &str) -> Vec<Found> {
+/// The agents in a WSL distro, or `None` when the distro could not be asked. The `PATH` is the
+/// one an interactive login shell has, since that is where version managers such as nvm put Node.
+pub async fn in_distro(distro: &str) -> Option<Vec<Found>> {
     let probes: String = AgentKind::ALL
         .iter()
         .map(|kind| {
@@ -164,22 +164,17 @@ pub async fn in_distro(distro: &str) -> Vec<Found> {
     let script = format!("printf '{MARK}\\n%s\\n%s\\n' \"$PATH\" \"$HOME\"; {probes}");
     let mut command = system::command("wsl.exe");
     command.args(["--distribution", distro, "--exec", "bash", "-lic", &script]);
-    let Some(said) = system::output(command).await else {
-        return Vec::new();
-    };
-    parse_distro(distro, &said)
+    parse_distro(distro, &system::output(command).await?)
 }
 
 /// Reads what the WSL script printed: the mark, the `PATH`, the home folder, then one line per
-/// agent kind, empty when it is not there.
-fn parse_distro(distro: &str, said: &str) -> Vec<Found> {
-    let Some((_, after)) = said.split_once(&format!("{MARK}\n")) else {
-        return Vec::new();
-    };
+/// agent kind, empty when it is not there. Without the mark, the script did not run.
+fn parse_distro(distro: &str, said: &str) -> Option<Vec<Found>> {
+    let (_, after) = said.split_once(&format!("{MARK}\n"))?;
     let mut lines = after.lines();
     let path = lines.next().unwrap_or_default().to_owned();
     let home = lines.next().unwrap_or_default().to_owned();
-    AgentKind::ALL
+    let found = AgentKind::ALL
         .into_iter()
         .zip(lines)
         .filter(|(_, line)| line.starts_with('/'))
@@ -191,7 +186,8 @@ fn parse_distro(distro: &str, said: &str) -> Vec<Found> {
             path: path.clone(),
             home: home.clone(),
         })
-        .collect()
+        .collect();
+    Some(found)
 }
 
 /// The agents on this system itself. An agent of the person's own choosing, a program and its
@@ -289,7 +285,7 @@ mod tests {
     #[test]
     fn a_distros_agents_are_read_past_whatever_the_profile_printed() {
         let said = "Welcome to Ubuntu!\n--player-two--\n/home/bob/.local/bin:/usr/bin\n/home/bob\n/home/bob/.local/bin/agent\n\n/home/bob/.nvm/versions/node/v24/bin/claude-agent-acp\n";
-        let found = parse_distro("Ubuntu", said);
+        let found = parse_distro("Ubuntu", said).expect("the script ran");
         let kinds: Vec<AgentKind> = found.iter().map(|agent| agent.kind).collect();
         assert_eq!(kinds, [AgentKind::Cursor, AgentKind::Claude]);
         assert_eq!(found[0].path, "/home/bob/.local/bin:/usr/bin");
@@ -305,7 +301,10 @@ mod tests {
             "a choice not there falls back to the preferred"
         );
         assert!(for_system(&found, &RunsIn::Windows, None).is_none());
-        assert!(parse_distro("Ubuntu", "no mark here").is_empty());
+        assert!(
+            parse_distro("Ubuntu", "no mark here").is_none(),
+            "a distro that could not be asked is not one with no agents"
+        );
     }
 
     #[test]

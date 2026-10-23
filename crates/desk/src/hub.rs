@@ -17,6 +17,8 @@ use crate::files::Identity;
 /// How long a stream may stay silent before it counts as broken. The hub sends a keep-alive
 /// every 20 seconds.
 const SILENCE: Duration = Duration::from_secs(60);
+/// How long any other call to the hub may take.
+const ANSWERING: Duration = Duration::from_secs(30);
 
 /// Sends a request and reads its JSON answer, turning a refusal into the hub's own words.
 async fn call<T: DeserializeOwned>(base: &str, request: RequestBuilder) -> anyhow::Result<T> {
@@ -103,7 +105,8 @@ impl Hub {
         let request = self
             .http
             .get(format!("{}{path}", self.base))
-            .bearer_auth(&self.token);
+            .bearer_auth(&self.token)
+            .timeout(ANSWERING);
         call(&self.base, request).await
     }
 
@@ -117,6 +120,7 @@ impl Hub {
             .http
             .request(method, format!("{}{path}", self.base))
             .bearer_auth(&self.token)
+            .timeout(ANSWERING)
             .json(body);
         call(&self.base, request).await
     }

@@ -1,7 +1,8 @@
 //! Looking for what can run: the agents on Windows and in each WSL distro, and whether each shared
 //! folder is there. What was found is kept in `found.json` and the places are advertised from it,
 //! so the desk looks in WSL only when it must: when Settings opens, an approval card appears or a
-//! run starts. At start it looks on Windows only, which never boots WSL.
+//! run starts. At start it looks on Windows only, which never boots WSL, but for the very first
+//! start, when there is nothing kept yet.
 
 use std::path::Path;
 
@@ -40,60 +41,77 @@ impl Desk {
     }
 
     /// Looks again at `systems`, keeps what it found, and advertises the places that can run.
+    /// A system that cannot be looked at now keeps what was found there before.
     pub(crate) async fn look(&self, systems: Where) -> anyhow::Result<Looked> {
-        // Two looks at once would each write `found.json`, and one would lose.
-        let _turn = self.inner.looking.lock().await;
-        let settings = self.settings()?;
-        let mut looked = self.looked();
-        if matches!(
-            systems,
-            Where::Here | Where::Everywhere | Where::At(RunsIn::Windows)
-        ) {
-            let found = agents::here(settings.custom_agent.as_deref()).await;
-            looked
-                .agents
-                .retain(|agent| agent.runs_in != RunsIn::Windows);
-            looked.agents.extend(found);
-            looked
-                .missing
-                .retain(|(runs_in, _)| runs_in != &RunsIn::Windows);
-            for folder in &settings.folders {
-                if folder.runs_in == RunsIn::Windows && !Path::new(&folder.path).is_dir() {
-                    looked.missing.push((RunsIn::Windows, folder.path.clone()));
+        let looked = {
+            // Two looks at once would each write `found.json`, and one would lose.
+            let _turn = self.inner.looking.lock().await;
+            let settings = self.settings()?;
+            let mut looked = self.looked();
+            if matches!(
+                systems,
+                Where::Here | Where::Everywhere | Where::At(RunsIn::Windows)
+            ) {
+                let found = agents::here(settings.custom_agent.as_deref()).await;
+                looked
+                    .agents
+                    .retain(|agent| agent.runs_in != RunsIn::Windows);
+                looked.agents.extend(found);
+                looked
+                    .missing
+                    .retain(|(runs_in, _)| runs_in != &RunsIn::Windows);
+                for folder in &settings.folders {
+                    if folder.runs_in == RunsIn::Windows && !Path::new(&folder.path).is_dir() {
+                        looked.missing.push((RunsIn::Windows, folder.path.clone()));
+                    }
                 }
             }
-        }
-        let distros = match &systems {
-            Where::Here | Where::At(RunsIn::Windows) => Vec::new(),
-            Where::At(RunsIn::Wsl(distro)) => vec![distro.clone()],
-            Where::Everywhere => {
-                let distros = system::distros().await;
-                // What was found in a distro that has gone goes with it.
-                let kept = |runs_in: &RunsIn| match runs_in {
-                    RunsIn::Windows => true,
-                    RunsIn::Wsl(distro) => distros.contains(distro),
+            let distros = match &systems {
+                Where::Here | Where::At(RunsIn::Windows) => Vec::new(),
+                Where::At(RunsIn::Wsl(distro)) if system::is_docker_desktop(distro) => Vec::new(),
+                Where::At(RunsIn::Wsl(distro)) => vec![distro.clone()],
+                Where::Everywhere => match system::distros().await {
+                    Some(distros) => {
+                        // What was found in a distro that has gone goes with it.
+                        let kept = |runs_in: &RunsIn| match runs_in {
+                            RunsIn::Windows => true,
+                            RunsIn::Wsl(distro) => distros.contains(distro),
+                        };
+                        looked.agents.retain(|agent| kept(&agent.runs_in));
+                        looked.missing.retain(|(runs_in, _)| kept(runs_in));
+                        distros
+                    }
+                    None => Vec::new(),
+                },
+            };
+            for distro in distros {
+                let runs_in = RunsIn::Wsl(distro.clone());
+                let Some(found) = agents::in_distro(&distro).await else {
+                    continue;
                 };
-                looked.agents.retain(|agent| kept(&agent.runs_in));
-                looked.missing.retain(|(runs_in, _)| kept(runs_in));
-                distros
-            }
-        };
-        for distro in distros {
-            let runs_in = RunsIn::Wsl(distro.clone());
-            let found = agents::in_distro(&distro).await;
-            looked.agents.retain(|agent| agent.runs_in != runs_in);
-            looked.agents.extend(found);
-            looked.missing.retain(|(missing, _)| missing != &runs_in);
-            for folder in &settings.folders {
-                if folder.runs_in == runs_in && !places::exists(&folder.path, &runs_in).await {
-                    looked.missing.push((runs_in.clone(), folder.path.clone()));
+                looked.agents.retain(|agent| agent.runs_in != runs_in);
+                looked.agents.extend(found);
+                looked.missing.retain(|(missing, _)| missing != &runs_in);
+                for folder in &settings.folders {
+                    if folder.runs_in == runs_in && !places::exists(&folder.path, &runs_in).await {
+                        looked.missing.push((runs_in.clone(), folder.path.clone()));
+                    }
                 }
             }
-        }
-        self.inner.files.write("found.json", &looked)?;
-        self.state().looked = Some(looked.clone());
+            self.inner.files.write("found.json", &looked)?;
+            self.state().looked = Some(looked.clone());
+            looked
+        };
         self.advertise().await?;
         Ok(looked)
+    }
+
+    /// Whether the desk has ever looked, and kept what it found.
+    pub(crate) fn has_looked(&self) -> bool {
+        self.inner
+            .files
+            .read::<Looked>("found.json")
+            .is_ok_and(|looked| looked.is_some())
     }
 
     /// Tells the hub the places that can run, when that changed since it was last told.

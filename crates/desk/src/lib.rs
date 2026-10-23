@@ -317,7 +317,9 @@ impl Desk {
                     distros,
                     agents,
                     half_installed: agents::half_installed(found).await,
-                    wsl: !system::distros().await.is_empty(),
+                    wsl: system::distros()
+                        .await
+                        .is_some_and(|distros| !distros.is_empty()),
                 }))
             }
             Request::PickFolder => {
@@ -468,6 +470,12 @@ impl Desk {
 
     /// Shares a folder, named after its remote when it is a git checkout.
     async fn add_folder(&self, path: String, runs_in: RunsIn) -> anyhow::Result<()> {
+        if let RunsIn::Wsl(distro) = &runs_in {
+            anyhow::ensure!(
+                !system::is_docker_desktop(distro),
+                "{distro} is Docker Desktop's own distro, which holds nobody's work"
+            );
+        }
         anyhow::ensure!(
             places::exists(&path, &runs_in).await,
             "there is no folder at {path}"
@@ -960,7 +968,13 @@ impl Desk {
             state.hub = Some(hub.clone());
             state.advertised = None;
         }
-        self.look(Where::Here).await?;
+        // The first start looks everywhere once; after that, only Windows at start.
+        let systems = if self.has_looked() {
+            Where::Here
+        } else {
+            Where::Everywhere
+        };
+        self.look(systems).await?;
         let (channels, people) = (hub.channels().await?, hub.people().await?);
         {
             let mut state = self.state();
