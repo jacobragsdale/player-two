@@ -16,6 +16,27 @@ import { WrongVersion } from "./WrongVersion.tsx";
 /** The app's version, which is the desk's and the hub's too when all is well. */
 const APP_VERSION = __APP_VERSION__;
 
+/** Where the chat last open is kept, in this window's own storage. */
+const LAST_OPEN = "player-two.open";
+
+/** The chat last open, if the window's storage can say. */
+function lastOpen(): string | null {
+  try {
+    return localStorage.getItem(LAST_OPEN);
+  } catch {
+    return null;
+  }
+}
+
+/** Keeps the chat open now, for the next start. Storage that refuses only costs that. */
+function keepOpen(chat: ChatId): void {
+  try {
+    localStorage.setItem(LAST_OPEN, chat);
+  } catch {
+    // The window then opens on the first chat, as it would on a first start.
+  }
+}
+
 export function Joined(): JSX.Element {
   const overview = useOverview();
   const [open, setOpen] = useState<ChatId | null>(null);
@@ -23,22 +44,33 @@ export function Joined(): JSX.Element {
   const [choosing, setChoosing] = useState(false);
   const [settings, setSettings] = useState(false);
 
-  // A clicked notification opens its chat.
+  // A clicked notification opens its chat, and Settings in the tray's menu opens Settings.
   useDeskEvents((event) => {
     if (event.type === "open") {
       setSettings(false);
       setOpen(event.chat);
       setThread(event.thread ?? null);
+    } else if (event.type === "settings") {
+      setSettings(true);
     }
   });
 
-  // Until the person picks one, the first chat is open.
-  const first = overview?.chats[0]?.chat ?? null;
+  // Until the person picks one, the chat open last time is open, or else the first.
+  const chats = overview?.chats;
   useEffect(() => {
-    if (open === null && first !== null) {
-      setOpen(first);
+    if (open === null && chats !== undefined) {
+      const last = lastOpen();
+      const chosen = chats.find((summary) => summary.chat === last) ?? chats[0];
+      if (chosen !== undefined) {
+        setOpen(chosen.chat);
+      }
     }
-  }, [open, first]);
+  }, [open, chats]);
+  useEffect(() => {
+    if (open !== null) {
+      keepOpen(open);
+    }
+  }, [open]);
 
   if (overview === null) {
     return <main className="flex h-full items-center justify-center text-muted-foreground">Loading…</main>;

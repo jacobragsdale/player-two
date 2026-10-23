@@ -21,6 +21,9 @@ use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 /// The argument start at login passes, so the app starts in the tray rather than in front.
 const MINIMIZED: &str = "--minimized";
 
+/// The file in the app's data folder that says the person was told the app stays in the tray.
+const TOLD_OF_TRAY: &str = "told-of-tray";
+
 /// Passes one request from the window to the desk, but for an update, which only the app can
 /// install. This is the only command the webview may call.
 #[tauri::command]
@@ -52,6 +55,7 @@ fn main() -> anyhow::Result<()> {
                 api.prevent_close();
                 // A window that cannot hide stays open; nothing is lost.
                 let _ = window.hide();
+                tell_of_tray(window.app_handle());
             }
         })
         .invoke_handler(tauri::generate_handler![desk])
@@ -119,6 +123,25 @@ fn picker(app: AppHandle) -> player_two_desk::Picker {
     })
 }
 
+/// The first time the window is closed, says that the app is still running in the tray.
+fn tell_of_tray(app: &AppHandle) {
+    let Ok(folder) = app.path().app_data_dir() else {
+        return;
+    };
+    let told = folder.join(TOLD_OF_TRAY);
+    if told.exists() {
+        return;
+    }
+    // If the file cannot be written, the person is told again next time, which does no harm.
+    let _ = std::fs::create_dir_all(&folder);
+    let _ = std::fs::write(&told, "");
+    notify::tell(
+        app,
+        "Player Two is still running",
+        "It waits in the tray, where requests can reach you. Quit is in its menu.",
+    );
+}
+
 /// Whether a URL is the app's own page, which is all the window may show.
 fn own(url: &Url) -> bool {
     url.scheme() == "tauri" || url.host_str() == Some("tauri.localhost")
@@ -155,17 +178,24 @@ fn outside(url: &Url) {
     }
 }
 
-/// The tray icon: a click opens the window, and its menu opens the window or quits the app.
+/// The tray icon: a click opens the window, and its menu opens the window or its settings, or
+/// quits the app.
 fn tray(app: &App) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open", "Open Player Two", true, None::<&str>)?;
+    let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&open, &quit])?;
+    let menu = Menu::with_items(app, &[&open, &settings, &quit])?;
     let mut tray = TrayIconBuilder::new()
         .tooltip("Player Two")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "open" => notify::bring_forward(app),
+            "settings" => {
+                notify::bring_forward(app);
+                // A window still loading opens on the chats; the next click finds it ready.
+                let _ = app.emit("desk", Event::Settings);
+            }
             "quit" => app.exit(0),
             _ => {}
         })

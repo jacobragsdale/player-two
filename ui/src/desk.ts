@@ -129,7 +129,9 @@ body: string } |
 /**  Which. */
 chat: ChatId; 
 /**  The thread, if any. */
-thread: number | null };
+thread: number | null } | 
+/**  The person chose Settings in the tray's menu: the window opens it. */
+{ type: "settings" };
 
 /**  One message as the window draws it. */
 export type Item = {

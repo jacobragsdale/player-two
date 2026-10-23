@@ -103,9 +103,21 @@ export function ChannelDialog({ me, channels, onDone }: Props): JSX.Element {
   );
 }
 
-/** The button in a channel's header that leaves it. */
+/** The button in a channel's header that leaves it, once the person says so. */
 export function LeaveChannel({ chat, onLeft }: { readonly chat: ChatId; readonly onLeft: () => void }): JSX.Element {
+  const [asking, setAsking] = useState(false);
   const [error, setError] = useState("");
+  const leave = (): void => {
+    ask({ type: "leave_channel", name: chat.replace(/^#/, "") }).then(
+      () => {
+        setAsking(false);
+        onLeft();
+      },
+      (failure: unknown) => {
+        setError(problem(failure));
+      }
+    );
+  };
   return (
     <>
       <Button
@@ -114,14 +126,39 @@ export function LeaveChannel({ chat, onLeft }: { readonly chat: ChatId; readonly
         size="xs"
         className="ml-auto text-muted-foreground"
         onClick={() => {
-          ask({ type: "leave_channel", name: chat.replace(/^#/, "") }).then(onLeft, (failure: unknown) => {
-            setError(problem(failure));
-          });
+          setError("");
+          setAsking(true);
         }}
       >
         Leave
       </Button>
-      {error !== "" && <span className="text-xs text-destructive">{error}</span>}
+      <Dialog open={asking} onOpenChange={setAsking}>
+        <DialogContent className="gap-3 sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Leave {chat}?</DialogTitle>
+            <DialogDescription>You stop seeing what is said there. You can join again from Join or create.</DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setAsking(false);
+              }}
+            >
+              Stay
+            </Button>
+            <Button type="button" variant="destructive" onClick={leave}>
+              Leave
+            </Button>
+          </div>
+          {error !== "" && (
+            <p role="alert" className="text-xs text-destructive">
+              {error}
+            </p>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

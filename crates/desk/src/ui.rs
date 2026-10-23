@@ -270,6 +270,8 @@ pub enum Event {
         /// The thread, if any.
         thread: Option<EventId>,
     },
+    /// The person chose Settings in the tray's menu: the window opens it.
+    Settings,
 }
 
 /// How the desk stands with the hub.

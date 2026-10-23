@@ -30,6 +30,34 @@ pub fn show(app: &AppHandle, chat: ChatId, thread: Option<EventId>, title: &str,
     }
 }
 
+/// Shows a notification about the app itself, which a click brings forward.
+#[cfg(windows)]
+pub fn tell(app: &AppHandle, title: &str, body: &str) {
+    use tauri_winrt_notification::Toast;
+
+    let id = if cfg!(debug_assertions) {
+        Toast::POWERSHELL_APP_ID.to_owned()
+    } else {
+        app.config().identifier.clone()
+    };
+    let handle = app.clone();
+    let shown = Toast::new(&id)
+        .title(title)
+        .text1(body)
+        .on_activated(move |_| {
+            bring_forward(&handle);
+            Ok(())
+        })
+        .show();
+    if let Err(error) = shown {
+        eprintln!("error: cannot show a notification: {error}");
+    }
+}
+
+/// Elsewhere, where the app is only developed, notifications are left out.
+#[cfg(not(windows))]
+pub fn tell(_app: &AppHandle, _title: &str, _body: &str) {}
+
 /// Elsewhere, where the app is only developed, notifications are left out.
 #[cfg(not(windows))]
 pub fn show(_app: &AppHandle, _chat: ChatId, _thread: Option<EventId>, _title: &str, _body: &str) {}
