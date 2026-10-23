@@ -121,7 +121,7 @@ function Prompt({ prompt, run, chat, me }: { readonly prompt: PromptView; readon
 export function Run({ run, chat, me }: { readonly run: RunView; readonly chat: ChatId; readonly me: string }): JSX.Element {
   const [error, setError] = useState("");
   const stop = (): void => {
-    ask({ type: "stop", run: run.id }).catch((failure: unknown) => {
+    ask({ type: "stop", chat, thread: run.thread, run: run.id }).catch((failure: unknown) => {
       setError(problem(failure));
     });
   };
@@ -132,7 +132,7 @@ export function Run({ run, chat, me }: { readonly run: RunView; readonly chat: C
           {run.state === "working" ? "◌ " : ""}
           {stateLine(run, me)}
         </p>
-        {run.mine && run.state === "working" && (
+        {run.may_stop && run.state === "working" && (
           <Button type="button" variant="ghost" size="xs" onClick={stop}>
             Stop
           </Button>

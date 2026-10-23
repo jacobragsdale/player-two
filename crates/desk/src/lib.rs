@@ -84,8 +84,9 @@ struct Inner {
     wake: Notify,
     /// The runs going on at this machine's places.
     runs: Mutex<runs::Runs>,
-    /// Runs the person stopped, so that their ending says so.
-    stopped: Mutex<std::collections::HashSet<EventId>>,
+    /// Runs stopped, so that their ending says so, with who stopped each when it was not the
+    /// person.
+    stopped: Mutex<std::collections::HashMap<EventId, Option<PersonName>>>,
     /// Numbers the steps put to a person.
     prompts: std::sync::atomic::AtomicU64,
     /// The folder dialog, once the app shell has given one.
@@ -129,7 +130,7 @@ impl Desk {
             }),
             wake: Notify::new(),
             runs: Mutex::new(runs::Runs::default()),
-            stopped: Mutex::new(std::collections::HashSet::new()),
+            stopped: Mutex::new(std::collections::HashMap::new()),
             prompts: std::sync::atomic::AtomicU64::new(1),
             picker: Mutex::new(None),
         };
@@ -218,8 +219,17 @@ impl Desk {
                 self.run_now(&chat, request, place).await?;
                 Ok(Response::Done)
             }
-            Request::Stop { run } => {
-                self.stop_run(run)?;
+            Request::Stop { chat, thread, run } => {
+                if self.runs_going(run) {
+                    self.stop_run(run, None)?;
+                } else {
+                    self.post(
+                        &chat,
+                        Some(thread),
+                        Body::RunStop(player_two_core::event::RunStop { run }),
+                    )
+                    .await?;
+                }
                 Ok(Response::Done)
             }
             Request::Answer {
@@ -984,6 +994,7 @@ impl Desk {
                     Some(Incoming::Event(event)) => {
                         let chat = event.chat.clone();
                         self.answered(&event);
+                        self.asked_to_stop(&event);
                         let follow_up = event.clone();
                         let notice = self.state().chats.as_mut().and_then(|chats| {
                             let notice = chats.notice(&event);

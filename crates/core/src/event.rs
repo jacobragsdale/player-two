@@ -80,6 +80,9 @@ pub enum Body {
     /// The run is over.
     #[serde(rename = "run.ended")]
     RunEnded(RunEnded),
+    /// The asker wants the run stopped.
+    #[serde(rename = "run.stop")]
+    RunStop(RunStop),
 }
 
 impl Body {
@@ -96,6 +99,7 @@ impl Body {
             Self::RunAnswer(_) => "run.answer",
             Self::RunResult(_) => "run.result",
             Self::RunEnded(_) => "run.ended",
+            Self::RunStop(_) => "run.stop",
         }
     }
 
@@ -107,7 +111,8 @@ impl Body {
             | Self::RunPrompt(RunPrompt { run, .. })
             | Self::RunAnswer(RunAnswer { run, .. })
             | Self::RunResult(RunResult { run, .. })
-            | Self::RunEnded(RunEnded { run, .. }) => Some(*run),
+            | Self::RunEnded(RunEnded { run, .. })
+            | Self::RunStop(RunStop { run }) => Some(*run),
             Self::Message(_)
             | Self::RunAccepted(_)
             | Self::RunDeclined(_)
@@ -318,7 +323,7 @@ pub struct RunResult {
 pub enum Ending {
     /// It finished.
     Done,
-    /// The owner stopped it.
+    /// Its owner, or its asker, stopped it.
     Stopped,
     /// It failed.
     Failed,
@@ -336,13 +341,21 @@ pub struct RunEnded {
     pub reason: Option<String>,
 }
 
+/// The asker wants a run stopped. The owner's desk stops it as if the owner had pressed Stop.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct RunStop {
+    /// The run, by its `run.accepted`.
+    pub run: EventId,
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::{Value, json};
 
     use super::{
         Activity, Body, Ending, Event, EventId, MAX_TEXT, Message, Mode, RunAccepted, RunActivity,
-        RunAnswer, RunDeclined, RunEnded, RunPrompt, RunResult, RunWithdrawn, RunsIn, StepsBy, Tag,
+        RunAnswer, RunDeclined, RunEnded, RunPrompt, RunResult, RunStop, RunWithdrawn, RunsIn,
+        StepsBy, Tag,
     };
     use crate::api::NewEvent;
     use crate::names::{ChatId, PersonName, PlaceName};
@@ -432,6 +445,10 @@ mod tests {
                     reason: None,
                 }),
                 json!({"kind": "run.ended", "body": {"run": 7, "how": "stopped"}}),
+            ),
+            (
+                Body::RunStop(RunStop { run }),
+                json!({"kind": "run.stop", "body": {"run": 7}}),
             ),
         ];
         for (body, expected) in cases {

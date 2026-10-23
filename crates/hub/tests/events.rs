@@ -85,6 +85,11 @@ async fn a_request_and_its_run_follow_the_rules() {
         200
     );
 
+    // The asker may ask for the run to stop; its owner stops it themselves.
+    let stop = json!({"chat": chat, "kind": "run.stop", "body": {"run": run}});
+    assert_eq!(hub.post(&bob, "/events", &stop).await.status, 403);
+    assert_eq!(hub.post(&alice, "/events", &stop).await.status, 200);
+
     // Only the asker may take a request back.
     let withdrawn = json!({"chat": chat, "kind": "run.withdrawn", "body": {"request": request}});
     assert_eq!(hub.post(&bob, "/events", &withdrawn).await.status, 403);

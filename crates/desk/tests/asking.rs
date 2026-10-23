@@ -229,6 +229,8 @@ async fn jacob_helps_alice_fix_her_proxy() {
     assert_eq!(
         alice
             .handle(Request::Stop {
+                chat: id(CHAT),
+                thread: slow.runs[0].thread,
                 run: slow.runs[0].id
             })
             .await,
@@ -341,4 +343,49 @@ async fn a_request_can_be_declined_or_taken_back() {
             "alice does not share billing"
         ]
     );
+}
+
+#[tokio::test]
+async fn the_asker_can_stop_a_run_but_nobody_else() {
+    let hub = Hub::start().await;
+    let (alice, jacob, carol) = three(&hub).await;
+
+    let ask = "@alice be slow about it";
+    send(&jacob, ask, None).await;
+    let request = until(&alice, None, ask, "the request", |item| {
+        item.waiting.len() == 1
+    })
+    .await;
+    assert_eq!(
+        alice.handle(approve(&request, StepsBy::Owner, false)).await,
+        Ok(Response::Done)
+    );
+    let working = until(&jacob, None, ask, "the run to start", |item| {
+        item.runs
+            .first()
+            .is_some_and(|run| run.state == RunState::Working)
+    })
+    .await;
+    let run = &working.runs[0];
+    assert!(run.may_stop && !run.mine, "jacob asked, so he may stop it");
+    let stop = Request::Stop {
+        chat: id(CHAT),
+        thread: run.thread,
+        run: run.id,
+    };
+    let seen_by_carol = until(&carol, None, ask, "carol to see it", |item| {
+        !item.runs.is_empty()
+    })
+    .await;
+    assert!(!seen_by_carol.runs[0].may_stop);
+    assert!(
+        carol.handle(stop.clone()).await.is_err(),
+        "the hub refuses carol's stop"
+    );
+    assert_eq!(jacob.handle(stop).await, Ok(Response::Done));
+    let stopped = until(&carol, None, ask, "the run to stop", |item| {
+        item.runs[0].state == RunState::Stopped
+    })
+    .await;
+    assert_eq!(stopped.runs[0].reason.as_deref(), Some("jacob stopped it"));
 }

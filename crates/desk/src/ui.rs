@@ -62,8 +62,13 @@ pub enum Request {
         /// The place it waited for.
         place: PlaceName,
     },
-    /// Stops a run going on at one of this machine's places.
+    /// Stops a run: one going on at this machine's places at once, and one this person asked
+    /// for by asking its owner's desk.
     Stop {
+        /// The chat the run is in.
+        chat: ChatId,
+        /// The thread its events are in.
+        thread: EventId,
         /// The run, by its `run.accepted`.
         run: EventId,
     },
@@ -422,7 +427,7 @@ pub enum RunState {
     Working,
     /// It finished.
     Done,
-    /// Its owner stopped it.
+    /// Its owner, or its asker, stopped it.
     Stopped,
     /// It failed.
     Failed,
@@ -457,6 +462,8 @@ pub struct RunView {
     pub result: Option<String>,
     /// Whether this person may answer its steps.
     pub may_answer: bool,
+    /// Whether this person may stop it: its owner, or its asker.
+    pub may_stop: bool,
     /// Whether the run is this machine's, so this person may stop it.
     pub mine: bool,
 }

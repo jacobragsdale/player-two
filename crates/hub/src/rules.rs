@@ -86,6 +86,7 @@ pub fn may_post(
         (Body::RunAnswer(_), _, Some((owner, accepted))) => {
             &owner == author || answered_by_asker(connection, &accepted, author)?
         }
+        (Body::RunStop(_), _, Some((_, accepted))) => asked_for(connection, &accepted, author)?,
         (_, _, Some((owner, _))) => &owner == author,
         _ => false,
     };
@@ -143,6 +144,15 @@ fn answered_by_asker(
     if accepted.steps_by != StepsBy::Asker {
         return Ok(false);
     }
+    asked_for(connection, accepted, author)
+}
+
+/// Whether `author` wrote the request the run answers.
+fn asked_for(
+    connection: &Connection,
+    accepted: &RunAccepted,
+    author: &PersonName,
+) -> anyhow::Result<bool> {
     Ok(
         store::event(connection, accepted.request)?
             .is_some_and(|request| &request.author == author),

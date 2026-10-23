@@ -257,6 +257,12 @@ impl Chats {
         })
     }
 
+    /// Who asked for a run.
+    #[must_use]
+    pub fn asker_of(&self, chat: &ChatId, run: EventId) -> Option<PersonName> {
+        self.run_of(chat, run).map(|(_, _, asker)| asker)
+    }
+
     /// A run's owner, how it was accepted, and who asked for it.
     fn run_of(&self, chat: &ChatId, run: EventId) -> Option<(PersonName, RunAccepted, PersonName)> {
         let events = self.events.get(chat)?;
@@ -397,6 +403,7 @@ impl Chats {
                     let may_answer = event.author == self.me
                         || (accepted.steps_by == StepsBy::Asker
                             && asker.as_ref() == Some(&self.me));
+                    let may_stop = event.author == self.me || asker.as_ref() == Some(&self.me);
                     requests.insert(event.id, accepted.request);
                     answered
                         .entry(accepted.request)
@@ -418,6 +425,7 @@ impl Chats {
                             prompts: Vec::new(),
                             result: None,
                             may_answer,
+                            may_stop,
                             mine: event.author == self.me,
                         },
                     );
@@ -490,7 +498,7 @@ impl Chats {
                         run.reason.clone_from(&ended.reason);
                     }
                 }
-                Body::Message(_) => {}
+                Body::Message(_) | Body::RunStop(_) => {}
             }
         }
         let mut by_request: BTreeMap<EventId, Vec<RunView>> = BTreeMap::new();

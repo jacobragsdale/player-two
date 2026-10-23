@@ -81,6 +81,7 @@ describe("an agent's run", () => {
       prompts: [{ id: "p1", what: "<script>window.pwned = 9</script>", allow: null, by: null }],
       result: `**fixed**\n\n${HOSTILE}`,
       may_answer: true,
+      may_stop: false,
       mine: false
     };
     const markup = renderToStaticMarkup(<Run run={run} chat="alice+bob" me="alice" />);

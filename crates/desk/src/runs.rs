@@ -317,8 +317,10 @@ impl Desk {
                 }
                 (Ending::Done, None)
             }
-            Ok(Ok(Ended::Cancelled)) => (Ending::Stopped, None),
-            Ok(Err(_)) if self.was_stopped(report.run) => (Ending::Stopped, None),
+            Ok(Ok(Ended::Cancelled)) => (Ending::Stopped, self.stopped_by(report.run)),
+            Ok(Err(_)) if self.was_stopped(report.run) => {
+                (Ending::Stopped, self.stopped_by(report.run))
+            }
             Ok(Err(error)) => (Ending::Failed, Some(format!("{error:#}"))),
             Err(error) => (Ending::Failed, Some(error.to_string())),
         };
@@ -436,7 +438,39 @@ impl Desk {
             .stopped
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .contains(&run)
+            .contains_key(&run)
+    }
+
+    /// Why a stopped run stopped, when its asker stopped it rather than its owner.
+    fn stopped_by(&self, run: EventId) -> Option<String> {
+        self.inner
+            .stopped
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&run)
+            .cloned()
+            .flatten()
+            .map(|asker| format!("{asker} stopped it"))
+    }
+
+    /// Stops a run of this machine's when its asker posted `run.stop`, as if the owner had
+    /// pressed Stop.
+    pub(crate) fn asked_to_stop(&self, event: &Event) {
+        let Body::RunStop(stop) = &event.body else {
+            return;
+        };
+        let asker = self
+            .state()
+            .chats
+            .as_ref()
+            .and_then(|chats| chats.asker_of(&event.chat, stop.run));
+        if asker.as_ref() == Some(&event.author)
+            && self.me().as_ref() != Some(&event.author)
+            && self.runs_going(stop.run)
+            && let Err(error) = self.stop_run(stop.run, Some(event.author.clone()))
+        {
+            eprintln!("error: cannot stop a run its asker stopped: {error:#}");
+        }
     }
 
     fn next_prompt(&self) -> u64 {
@@ -475,8 +509,9 @@ impl Desk {
     }
 
     /// Stops a run of this machine's: asks the agent to stop, and kills it if it has not soon.
-    /// Stopping ends keeping going in its thread too, since the session goes with it.
-    pub(crate) fn stop_run(&self, run: EventId) -> anyhow::Result<()> {
+    /// Stopping ends keeping going in its thread too, since the session goes with it. `by` is the
+    /// asker, when it was they who stopped it.
+    pub(crate) fn stop_run(&self, run: EventId, by: Option<PersonName>) -> anyhow::Result<()> {
         let session = {
             let runs = self.runs();
             let active = runs
@@ -490,7 +525,7 @@ impl Desk {
             .stopped
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .insert(run);
+            .insert(run, by);
         session.cancel();
         tokio::spawn(async move {
             tokio::time::sleep(GRACE).await;

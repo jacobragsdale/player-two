@@ -178,6 +178,8 @@ async fn a_busy_place_leaves_the_next_tag_waiting_and_stop_stops_it() {
 
     assert_eq!(
         desk.handle(Request::Stop {
+            chat: id(CHAT),
+            thread: slow.runs[0].thread,
             run: slow.runs[0].id
         })
         .await,

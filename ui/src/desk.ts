@@ -300,8 +300,15 @@ chat: ChatId;
 request: number; 
 /**  The place it waited for. */
 place: PlaceName } | 
-/**  Stops a run going on at one of this machine's places. */
+/**
+ *  Stops a run: one going on at this machine's places at once, and one this person asked
+ *  for by asking its owner's desk.
+ */
 { type: "stop"; 
+/**  The chat the run is in. */
+chat: ChatId; 
+/**  The thread its events are in. */
+thread: number; 
 /**  The run, by its `run.accepted`. */
 run: number } | 
 /**  Answers a step a run waits on. */
@@ -465,7 +472,7 @@ export type RunState =
 "working" | 
 /**  It finished. */
 "done" | 
-/**  Its owner stopped it. */
+/**  Its owner, or its asker, stopped it. */
 "stopped" | 
 /**  It failed. */
 "failed";
@@ -498,6 +505,8 @@ export type RunView = {
 	result: string | null,
 	/**  Whether this person may answer its steps. */
 	may_answer: boolean,
+	/**  Whether this person may stop it: its owner, or its asker. */
+	may_stop: boolean,
 	/**  Whether the run is this machine's, so this person may stop it. */
 	mine: boolean,
 };
