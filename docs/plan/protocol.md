@@ -42,7 +42,7 @@ A channel's events go to its members, and a direct chat's to its two people. Nob
 
 `GET /stream` stays open. Each event the person may see is sent as `id: <event id>` and `data: <event JSON>`. Presence changes are sent as `event: presence` and `data: { name, here }`. A comment line keeps the stream alive every 20 seconds. On reconnecting, the desk sends `Last-Event-ID` and gets everything after it.
 
-A person counts as **here** while one of their streams is open. `last_seen` is when their last stream closed.
+A person counts as **here** while one of their streams is open. `last_seen` is when their last stream closed. When someone changes their places, everyone is sent their presence again, as a sign to fetch `/people` anew.
 
 ## Events
 

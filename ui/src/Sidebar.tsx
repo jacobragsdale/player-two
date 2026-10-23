@@ -55,9 +55,10 @@ interface Props {
   readonly onOpen: (chat: ChatId) => void;
   /** Buttons under the channels: joining or making one. */
   readonly channelActions: ReactNode;
+  readonly onSettings: () => void;
 }
 
-export function Sidebar({ overview, open, onOpen, channelActions }: Props): JSX.Element {
+export function Sidebar({ overview, open, onOpen, channelActions, onSettings }: Props): JSX.Element {
   const channels = overview.chats.filter((summary) => summary.here === null);
   const people = overview.chats.filter((summary) => summary.here !== null);
   return (
@@ -78,9 +79,14 @@ export function Sidebar({ overview, open, onOpen, channelActions }: Props): JSX.
         </ul>
         {people.length === 0 && <p className="mx-2 my-1 text-muted-foreground">Nobody else has joined yet.</p>}
       </div>
-      <p className="truncate border-t px-3 py-2 text-xs text-muted-foreground" title={connectionLine(overview.connection)}>
-        {overview.me ?? ""} · {connectionLine(overview.connection)}
-      </p>
+      <div className="flex items-center gap-1 border-t px-3 py-1.5">
+        <p className="flex-1 truncate text-xs text-muted-foreground" title={connectionLine(overview.connection)}>
+          {overview.me ?? ""} · {connectionLine(overview.connection)}
+        </p>
+        <Button type="button" variant="ghost" size="xs" onClick={onSettings}>
+          Settings
+        </Button>
+      </div>
     </nav>
   );
 }

@@ -53,6 +53,17 @@ impl Streams {
         let _ = self.sender.send(Live::Event(Arc::new(event)));
     }
 
+    /// Tells everyone `name` is here again, so their desks fetch the people list anew: their
+    /// places changed.
+    pub fn announce(&self, name: &PersonName) {
+        if self.is_here(name) {
+            let _ = self.sender.send(Live::Presence(Presence {
+                name: name.clone(),
+                here: true,
+            }));
+        }
+    }
+
     /// Ends every stream of `name`.
     pub fn close(&self, name: &PersonName) {
         let _ = self.sender.send(Live::Close(name.clone()));

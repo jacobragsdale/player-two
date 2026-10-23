@@ -5,10 +5,12 @@
 //! window is typed by what is here and never by hand.
 
 use player_two_core::api::{ChannelInfo, Person};
-use player_two_core::event::{EventId, Tag};
-use player_two_core::names::{ChatId, PersonName};
+use player_two_core::event::{EventId, RunsIn, Tag};
+use player_two_core::names::{ChatId, PersonName, PlaceName};
 use serde::{Deserialize, Serialize};
 use specta::Type;
+
+use crate::places::Folder;
 
 /// Something the window asks of the desk.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Type)]
@@ -70,6 +72,27 @@ pub enum Request {
     },
     /// Installs the hub's version of the app, then restarts. The app does this, not the desk.
     Update,
+    /// Asks for the person's places.
+    Places,
+    /// Asks for checkouts worth sharing, found under `dev` folders.
+    Suggestions,
+    /// Shares a checkout.
+    AddFolder {
+        /// Where it is: a Windows path, or a Linux path in a WSL distro.
+        path: String,
+        /// Which system it is on.
+        runs_in: RunsIn,
+    },
+    /// Stops sharing a checkout.
+    RemoveFolder {
+        /// Its name.
+        name: PlaceName,
+    },
+    /// Sets where `@me` runs by default.
+    SetMachineRunsIn {
+        /// Windows, or a WSL distro.
+        runs_in: RunsIn,
+    },
 }
 
 /// The desk's answer to one [`Request`].
@@ -92,6 +115,13 @@ pub enum Response {
     Overview(Overview),
     /// The answer to [`Request::Chat`].
     Chat(ChatView),
+    /// The answer to [`Request::Places`].
+    Places(PlacesView),
+    /// The answer to [`Request::Suggestions`].
+    Suggestions {
+        /// Checkouts not shared yet.
+        folders: Vec<Folder>,
+    },
     /// The request was done, and there is nothing more to say.
     Done,
 }
@@ -144,6 +174,17 @@ pub enum Connection {
         /// The hub's version.
         hub: String,
     },
+}
+
+/// The person's places.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Type)]
+pub struct PlacesView {
+    /// Where `@me` runs by default.
+    pub machine_runs_in: RunsIn,
+    /// The checkouts shared.
+    pub folders: Vec<Folder>,
+    /// The WSL distros installed, none without WSL.
+    pub distros: Vec<String>,
 }
 
 /// The chat list, the people and how the connection stands.

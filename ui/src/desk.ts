@@ -88,6 +88,16 @@ body: string } |
 /**  Which. */
 chat: ChatId };
 
+/**  One shared checkout. */
+export type Folder = {
+	/**  The name it is tagged by: `@me/name`. */
+	name: PlaceName,
+	/**  Where it is, as a Windows path, or a Linux one inside its distro. */
+	path: string,
+	/**  Which system it is on. */
+	runs_in: RunsIn,
+};
+
 /**  One message as the window draws it. */
 export type Item = {
 	/**  Its id. */
@@ -154,6 +164,16 @@ export type PlaceKind =
  */
 export type PlaceName = string;
 
+/**  The person's places. */
+export type PlacesView = {
+	/**  Where `@me` runs by default. */
+	machine_runs_in: RunsIn,
+	/**  The checkouts shared. */
+	folders: Folder[],
+	/**  The WSL distros installed, none without WSL. */
+	distros: string[],
+};
+
 /**  Something the window asks of the desk. */
 export type Request = 
 /**  Asks the desk to say who it is. */
@@ -203,20 +223,38 @@ name: string } |
 /**  Its name, without `#`. */
 name: string } | 
 /**  Installs the hub's version of the app, then restarts. The app does this, not the desk. */
-{ type: "update" };
+{ type: "update" } | 
+/**  Asks for the person's places. */
+{ type: "places" } | 
+/**  Asks for checkouts worth sharing, found under `dev` folders. */
+{ type: "suggestions" } | 
+/**  Shares a checkout. */
+{ type: "add_folder"; 
+/**  Where it is: a Windows path, or a Linux path in a WSL distro. */
+path: string; 
+/**  Which system it is on. */
+runs_in: RunsIn } | 
+/**  Stops sharing a checkout. */
+{ type: "remove_folder"; 
+/**  Its name. */
+name: PlaceName } | 
+/**  Sets where `@me` runs by default. */
+{ type: "set_machine_runs_in"; 
+/**  Windows, or a WSL distro. */
+runs_in: RunsIn };
 
 /**  The desk's answer to one [`Request`]. */
 export type Response = 
 /**  The answer to [`Request::Hello`]. */
 ({ type: "hello"; 
 /**  The version the hub, the app and the desk all share. */
-version: string }) & { joined?: never; suggested_name?: never } | 
+version: string }) & { folders?: never; joined?: never; suggested_name?: never } | 
 /**  The answer to [`Request::Setup`]. */
 ({ type: "setup"; 
 /**  The name this machine joined under, once it has. */
 joined: PersonName | null; 
 /**  The name to offer, from the Windows user name. */
-suggested_name: string | null }) & { version?: never } | 
+suggested_name: string | null }) & { folders?: never; version?: never } | 
 /**  The answer to [`Request::Overview`]. */
 {
 	type: "overview",
@@ -225,8 +263,19 @@ suggested_name: string | null }) & { version?: never } |
 {
 	type: "chat",
 } & ChatView | 
+/**  The answer to [`Request::Places`]. */
+{
+	type: "places",
+} & PlacesView | 
+/**  The answer to [`Request::Suggestions`]. */
+({ type: "suggestions"; 
+/**  Checkouts not shared yet. */
+folders: Folder[] }) & { joined?: never; suggested_name?: never; version?: never } | 
 /**  The request was done, and there is nothing more to say. */
-({ type: "done" }) & { joined?: never; suggested_name?: never; version?: never };
+({ type: "done" }) & { folders?: never; joined?: never; suggested_name?: never; version?: never };
+
+/**  Where on a machine a run happens: `windows`, or `wsl:<distro>`. */
+export type RunsIn = string;
 
 /**  One tag in a message: `@person` or `@person/place`. */
 export type Tag = {

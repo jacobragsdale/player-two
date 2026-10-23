@@ -7,6 +7,8 @@
 pub mod chats;
 pub mod files;
 pub mod hub;
+pub mod places;
+pub mod system;
 pub mod ui;
 
 use std::collections::BTreeMap;
@@ -18,12 +20,13 @@ use anyhow::Context;
 use chats::Chats;
 use files::{Files, Identity};
 use hub::{Hub, Incoming, NotJoined};
+use places::{Folder, Settings};
 use player_two_core::api::NewEvent;
 use player_two_core::event::{Body, Event, EventId, Message};
 use player_two_core::join_code::JoinCode;
 use player_two_core::names::{ChannelName, ChatId, PersonName};
 use tokio::sync::{Notify, mpsc};
-use ui::{Connection, Overview, Request, Response};
+use ui::{Connection, Overview, PlacesView, Request, Response};
 
 /// How many events one page from the hub holds.
 const PAGE: u32 = 100;
@@ -170,6 +173,32 @@ impl Desk {
                 Ok(Response::Done)
             }
             Request::Update => anyhow::bail!("updates are installed by the app, not the desk"),
+            Request::Places => Ok(Response::Places(PlacesView {
+                machine_runs_in: self.settings()?.machine_runs_in,
+                folders: self.settings()?.folders,
+                distros: system::distros().await,
+            })),
+            Request::Suggestions => {
+                let settings = self.settings()?;
+                let folders = places::suggestions(&settings, &system::distros().await).await;
+                Ok(Response::Suggestions { folders })
+            }
+            Request::AddFolder { path, runs_in } => {
+                self.add_folder(path, runs_in).await?;
+                Ok(Response::Done)
+            }
+            Request::RemoveFolder { name } => {
+                let mut settings = self.settings()?;
+                settings.folders.retain(|folder| folder.name != name);
+                self.save_settings(&settings).await?;
+                Ok(Response::Done)
+            }
+            Request::SetMachineRunsIn { runs_in } => {
+                let mut settings = self.settings()?;
+                settings.machine_runs_in = runs_in;
+                self.save_settings(&settings).await?;
+                Ok(Response::Done)
+            }
             Request::LeaveChannel { name } => {
                 let name = ChannelName::new(name)?;
                 self.hub()?.membership(&name, false).await?;
@@ -177,6 +206,54 @@ impl Desk {
                 Ok(Response::Done)
             }
         }
+    }
+
+    /// The person's settings, or the defaults until they change one.
+    fn settings(&self) -> anyhow::Result<Settings> {
+        Ok(self.inner.files.read("settings.json")?.unwrap_or_default())
+    }
+
+    /// Keeps the settings, and tells the hub the places in them.
+    async fn save_settings(&self, settings: &Settings) -> anyhow::Result<()> {
+        self.inner.files.write("settings.json", settings)?;
+        if let Ok(hub) = self.hub() {
+            hub.set_places(&settings.advertised()).await?;
+        }
+        self.tell(ui::Event::Overview);
+        Ok(())
+    }
+
+    async fn add_folder(
+        &self,
+        path: String,
+        runs_in: player_two_core::event::RunsIn,
+    ) -> anyhow::Result<()> {
+        let path = path.trim().to_owned();
+        anyhow::ensure!(
+            places::exists(&path, &runs_in).await,
+            "there is no folder at {path}"
+        );
+        let mut settings = self.settings()?;
+        anyhow::ensure!(
+            !settings
+                .folders
+                .iter()
+                .any(|folder| folder.path == path && folder.runs_in == runs_in),
+            "{path} is shared already"
+        );
+        let remote = places::remote_of(&path, &runs_in).await;
+        let taken: Vec<_> = settings
+            .folders
+            .iter()
+            .map(|folder| folder.name.clone())
+            .collect();
+        let name = places::name_for(&path, remote.as_deref(), &taken)?;
+        settings.folders.push(Folder {
+            name,
+            path,
+            runs_in,
+        });
+        self.save_settings(&settings).await
     }
 
     /// The address of the hub this machine joined, if it has.
@@ -386,6 +463,7 @@ impl Desk {
         if version != env!("CARGO_PKG_VERSION") {
             return Err(WrongVersion(version).into());
         }
+        hub.set_places(&self.settings()?.advertised()).await?;
         let (channels, people) = (hub.channels().await?, hub.people().await?);
         {
             let mut state = self.state();

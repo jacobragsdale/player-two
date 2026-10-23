@@ -9,6 +9,7 @@ import { ChannelDialog } from "./Channels.tsx";
 import { Chat } from "./Chat.tsx";
 import type { ChatId } from "./desk.ts";
 import { useDeskEvents, useOverview } from "./hooks.ts";
+import { Settings } from "./Settings.tsx";
 import { Sidebar } from "./Sidebar.tsx";
 import { WrongVersion } from "./WrongVersion.tsx";
 
@@ -20,6 +21,7 @@ export function Joined(): JSX.Element {
   const [open, setOpen] = useState<ChatId | null>(null);
   const [thread, setThread] = useState<number | null>(null);
   const [choosing, setChoosing] = useState(false);
+  const [settings, setSettings] = useState(false);
 
   // A clicked notification opens its chat.
   useDeskEvents((event) => {
@@ -44,6 +46,16 @@ export function Joined(): JSX.Element {
     return <WrongVersion hub={overview.connection.hub} app={APP_VERSION} />;
   }
   const me = overview.me ?? "";
+  if (settings) {
+    return (
+      <Settings
+        me={me}
+        onBack={() => {
+          setSettings(false);
+        }}
+      />
+    );
+  }
   return (
     <main className="grid h-full grid-cols-[15rem_1fr]">
       <Sidebar
@@ -52,6 +64,9 @@ export function Joined(): JSX.Element {
         onOpen={(chat) => {
           setOpen(chat);
           setThread(null);
+        }}
+        onSettings={() => {
+          setSettings(true);
         }}
         channelActions={
           <Button

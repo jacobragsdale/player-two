@@ -406,10 +406,12 @@ async fn set_places(
             "only the machine may be called machine",
         ));
     }
+    let who = me.clone();
     state
         .db
-        .call(move |connection| store::set_places(connection, &me, &places))
+        .call(move |connection| store::set_places(connection, &who, &places))
         .await?;
+    state.streams.announce(&me);
     Ok(StatusCode::NO_CONTENT)
 }
 
