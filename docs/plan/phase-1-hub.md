@@ -42,7 +42,7 @@ The whole hub, tested end to end and ready to deploy. [`protocol.md`](protocol.m
     - secrets for both tokens;
     - a Service;
     - an Ingress with a one-hour read timeout and buffering off for the stream.
-- [ ] **P1-12 One scenario test.**
+- [x] **P1-12 One scenario test.**
   - Two people join, chat in a channel and directly, and one of them reconnects and resumes their stream.
   - An admin resets a name, and that person joins again.
   - A third person cannot read either chat.
