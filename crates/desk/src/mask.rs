@@ -67,8 +67,22 @@ fn after(text: &str, key: &str, separator: char, ends: impl Fn(char) -> bool) ->
             from = key_end;
             continue;
         }
-        let start = spaced(at + separator.len_utf8());
-        let end = start + text[start..].find(&ends).unwrap_or(text.len() - start);
+        let mut start = spaced(at + separator.len_utf8());
+        // A quoted value runs to its closing quote, which stays.
+        let quote = text[start..]
+            .chars()
+            .next()
+            .filter(|c| matches!(c, '"' | '\''));
+        let end = match quote {
+            Some(quote) => {
+                start += 1;
+                start
+                    + text[start..]
+                        .find([quote, '\n'])
+                        .unwrap_or(text.len() - start)
+            }
+            None => start + text[start..].find(&ends).unwrap_or(text.len() - start),
+        };
         out.push_str(&text[from..start]);
         if end > start {
             out.push_str(HIDDEN);
@@ -111,6 +125,12 @@ mod tests {
         assert_eq!(
             mask("Authorization: Basic YWxhZGRpbjpvcGVu\nAccept: */*"),
             "Authorization: ****\nAccept: */*"
+        );
+        assert_eq!(
+            mask(
+                "export GITHUB_TOKEN=\"ghp_abc 123\"; DB_PASSWORD='s3cret' password = \"hunter2\""
+            ),
+            "export GITHUB_TOKEN=\"****\"; DB_PASSWORD='****' password = \"****\""
         );
     }
 
