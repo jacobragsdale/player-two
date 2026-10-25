@@ -43,7 +43,8 @@ pub struct Order {
     pub keep_going: bool,
 }
 
-/// What every turn starts with: whose machine, who asked, what it may do, and never to elevate.
+/// What every turn starts with: whose machine, who asked, what it may do, that the chat sees all
+/// it reads or prints, and never to elevate.
 #[must_use]
 pub fn preamble(owner: &PersonName, asker: &PersonName, runs_in: &RunsIn, folder: &str) -> String {
     let system = match runs_in {
@@ -59,6 +60,7 @@ pub fn preamble(owner: &PersonName, asker: &PersonName, runs_in: &RunsIn, folder
     };
     format!(
         "You are an agent on {owner}'s computer, on {system}, in {folder}. {whose} You may do what the request needs. \
+         Everything you read or print is shown to everyone in this chat, so never print passwords, tokens or keys. \
          Never try to run anything as administrator: no UAC prompts, runas or sudo. If a step needs admin rights, \
          stop and say exactly what {owner} should run themselves. Keep your answer short: it is posted in the chat.\n\n---\n\n"
     )
@@ -539,6 +541,11 @@ mod tests {
         assert!(text.contains("jacob asked"));
         assert!(text.contains("not jacob's"));
         assert!(text.contains("You may do what the request needs."));
+        assert!(
+            text.contains(
+                "shown to everyone in this chat, so never print passwords, tokens or keys"
+            )
+        );
         assert!(text.contains("no UAC prompts, runas or sudo"));
         let own = preamble(&alice, &alice, &RunsIn::Windows, "C:\\Users\\alice");
         assert!(!own.contains("not alice's"));

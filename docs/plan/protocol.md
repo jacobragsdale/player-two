@@ -80,6 +80,7 @@ A run its owner let go may do anything their user can. Each agent starts in its 
 Every run starts with a preamble ahead of the request's text. It says:
 - whose machine this is and who asked;
 - that it may do what the request needs;
+- that everything it reads or prints is shown to everyone in the chat, so it must never print passwords, tokens or keys;
 - that the agent must never try to elevate (no UAC, `runas` or `sudo`). If a step needs admin, it must stop and say exactly what the owner should run;
 - that the request is from the asker, not from the owner.
 
