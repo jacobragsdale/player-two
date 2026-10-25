@@ -73,7 +73,7 @@ Rules every desk keeps, as well as the hub:
 
 ## Runs
 
-A run its owner let go may do anything their user can. The desk answers each ACP `session/request_permission` yes, choosing the option that allows it once where the agent offers one. The desk offers the agent no file system or terminal capability of its own: the agent uses its own tools. Player Two does not sandbox the agent: it runs as the owner's Windows or WSL user.
+A run its owner let go may do anything their user can. Each agent starts in its own mode that asks nobody: Cursor as `agent --force acp`, Copilot as `copilot --acp --stdio --allow-all`, and an agent whose session offers a `bypassPermissions` mode, as Claude Code's adapter does, is put in it with `session/set_mode`. The setup check starts an agent the same way. The desk answers each `session/request_permission` that still comes yes, choosing the option that allows it once where the agent offers one, since an agent may keep an "always" in its own settings. The desk offers the agent no file system or terminal capability of its own: the agent uses its own tools. Player Two does not sandbox the agent: it runs as the owner's Windows or WSL user.
 
 Every run starts with a preamble ahead of the request's text. It says:
 - whose machine this is and who asked;

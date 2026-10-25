@@ -9,28 +9,35 @@
 //! - `sign in`: says it must be signed in.
 //! - `echo`: answers with the whole prompt it was given.
 //! - `secret`: reads a file holding a proxy password, and answers with a token.
+//! - `mode`: says which of its modes the session is in.
 //!
 //! Every turn that does not fail ends with an answer saying what it did.
 //!
 //! It offers a way to sign in over ACP, `fake-login`, which always works. Started with
 //! `--needs-sign-in <file>`, it will not open a session until signed in, which writes the file;
 //! with `--no-sign-in`, it offers no way to sign in.
+//!
+//! Its sessions have two modes, as Claude Code's adapter does: `default`, which asks, and
+//! `bypassPermissions`, which does not. With `--no-modes`, it offers none, and always asks.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use agent_client_protocol::schema::v1::{
     AgentCapabilities, AuthMethod, AuthMethodAgent, AuthenticateRequest, AuthenticateResponse,
     CancelNotification, ContentBlock, ContentChunk, Diff, InitializeRequest, InitializeResponse,
     NewSessionRequest, NewSessionResponse, PermissionOption, PermissionOptionKind, PromptRequest,
-    PromptResponse, RequestPermissionOutcome, RequestPermissionRequest, SessionNotification,
-    SessionUpdate, StopReason, TextContent, ToolCall, ToolCallContent, ToolCallStatus,
+    PromptResponse, RequestPermissionOutcome, RequestPermissionRequest, SessionMode,
+    SessionModeState, SessionNotification, SessionUpdate, SetSessionModeRequest,
+    SetSessionModeResponse, StopReason, TextContent, ToolCall, ToolCallContent, ToolCallStatus,
     ToolCallUpdate, ToolCallUpdateFields, ToolKind,
 };
 use agent_client_protocol::{Agent, Client, ConnectionTo, Error, Stdio};
 use tokio::sync::Notify;
 
 const SESSION: &str = "fake-session";
+/// The mode in which it asks nobody.
+const BYPASS: &str = "bypassPermissions";
 
 fn text(words: &str) -> ContentBlock {
     ContentBlock::Text(TextContent::new(words))
@@ -65,9 +72,10 @@ async fn allowed(
     )
 }
 
-/// A tool call that asks first, and how it ended.
+/// A tool call that asks first, unless the session asks nobody, and how it ended.
 async fn asked_call(
     connection: &ConnectionTo<Client>,
+    bypass: bool,
     call: &str,
     title: &str,
     kind: ToolKind,
@@ -83,7 +91,7 @@ async fn asked_call(
                 .raw_input(raw),
         ),
     )?;
-    let yes = allowed(connection, call, title, kind).await?;
+    let yes = bypass || allowed(connection, call, title, kind).await?;
     let fields = if yes {
         ToolCallUpdateFields::new()
             .status(ToolCallStatus::Completed)
@@ -103,7 +111,9 @@ async fn turn(
     connection: ConnectionTo<Client>,
     whole: String,
     cancelled: Arc<Notify>,
+    mode: String,
 ) -> Result<StopReason, Error> {
+    let bypass = mode == BYPASS;
     let prompt = whole
         .rsplit_once("\n---\n")
         .map_or(whole.as_str(), |(_, request)| request)
@@ -144,6 +154,7 @@ async fn turn(
         );
         let ended = asked_call(
             &connection,
+            bypass,
             "edit-1",
             "Edit pip.conf",
             ToolKind::Edit,
@@ -158,6 +169,7 @@ async fn turn(
         let output = ToolCallContent::from(text("Writing to pip.conf"));
         let ended = asked_call(
             &connection,
+            bypass,
             "run-1",
             command,
             ToolKind::Execute,
@@ -183,6 +195,9 @@ async fn turn(
     if prompt.contains("echo") {
         answer = format!("{answer}\n\n{whole}");
     }
+    if prompt.contains("mode") {
+        answer = format!("{answer} Mode: {mode}.");
+    }
     say(
         &connection,
         SessionUpdate::AgentMessageChunk(ContentChunk::new(text(&answer))),
@@ -196,6 +211,9 @@ async fn main() -> Result<(), Error> {
     let on_cancel = Arc::clone(&cancelled);
     let args: Vec<String> = std::env::args().collect();
     let offers_sign_in = !args.iter().any(|arg| arg == "--no-sign-in");
+    let offers_modes = !args.iter().any(|arg| arg == "--no-modes");
+    let mode = Arc::new(Mutex::new("default".to_owned()));
+    let (setting, prompting) = (Arc::clone(&mode), mode);
     // The file that says it was signed in, when it must be before a session opens.
     let signed_in = args
         .iter()
@@ -238,7 +256,26 @@ async fn main() -> Result<(), Error> {
                 if opening.as_ref().is_some_and(|file| !file.exists()) {
                     return responder.respond_with_error(Error::auth_required());
                 }
-                responder.respond(NewSessionResponse::new(SESSION))
+                let modes = SessionModeState::new(
+                    "default",
+                    vec![
+                        SessionMode::new("default", "Asks"),
+                        SessionMode::new(BYPASS, "Asks nobody"),
+                    ],
+                );
+                let response = NewSessionResponse::new(SESSION);
+                responder.respond(if offers_modes {
+                    response.modes(modes)
+                } else {
+                    response
+                })
+            },
+            agent_client_protocol::on_receive_request!(),
+        )
+        .on_receive_request(
+            async move |set: SetSessionModeRequest, responder, _connection| {
+                *setting.lock().unwrap_or_else(PoisonError::into_inner) = set.mode_id.to_string();
+                responder.respond(SetSessionModeResponse::new())
             },
             agent_client_protocol::on_receive_request!(),
         )
@@ -254,10 +291,14 @@ async fn main() -> Result<(), Error> {
                     .collect::<Vec<_>>()
                     .join("\n");
                 let cancelled = Arc::clone(&cancelled);
+                let mode = prompting
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .clone();
                 let working = connection.clone();
                 // The turn runs off the dispatch loop, which must stay free to carry its answers.
                 connection.spawn(async move {
-                    match turn(working, words, cancelled).await {
+                    match turn(working, words, cancelled, mode).await {
                         Ok(stop) => responder.respond(PromptResponse::new(stop)),
                         Err(error) => responder.respond_with_error(error),
                     }

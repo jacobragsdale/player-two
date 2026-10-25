@@ -10,7 +10,7 @@ use agent_client_protocol::schema::v1::{
     AuthMethod, AuthenticateRequest, CancelNotification, ContentBlock, InitializeRequest,
     NewSessionRequest, PermissionOptionKind, PromptRequest, RequestPermissionOutcome,
     RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome,
-    SessionNotification, SessionUpdate, StopReason, TextContent,
+    SessionNotification, SessionUpdate, SetSessionModeRequest, StopReason, TextContent,
 };
 use agent_client_protocol::{Agent, ByteStreams, Client, ConnectionTo, ErrorCode};
 use player_two_core::event::Activity;
@@ -29,6 +29,9 @@ pub enum Ended {
     /// It was cancelled.
     Cancelled,
 }
+
+/// The session mode, where an agent has it, in which it asks nobody before acting.
+const BYPASS: &str = "bypassPermissions";
 
 /// A turn waiting to be sent, and where its ending goes.
 struct Turn {
@@ -224,6 +227,12 @@ impl Session {
                     let started = async {
                         connection.send_request(InitializeRequest::new(ProtocolVersion::V1)).block_task().await?;
                         let session = connection.send_request(NewSessionRequest::new(cwd)).block_task().await?;
+                        // An agent with a mode that asks nobody, as Claude Code's adapter has, is put
+                        // in it. One that will not be, or has none, still gets a yes to each ask.
+                        let bypass = session.modes.as_ref().is_some_and(|modes| modes.available_modes.iter().any(|mode| &*mode.id.0 == BYPASS));
+                        if bypass {
+                            let _ = connection.send_request(SetSessionModeRequest::new(session.session_id.clone(), BYPASS)).block_task().await;
+                        }
                         Ok::<_, agent_client_protocol::Error>(session.session_id)
                     };
                     let session = match started.await {

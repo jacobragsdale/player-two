@@ -26,9 +26,9 @@ export type AgentInfo = {
 
 /**  The agents Player Two knows how to start over ACP, in the order it prefers them. */
 export type AgentKind = 
-/**  Cursor's command line, `agent acp`. */
+/**  Cursor's command line, `agent --force acp`. */
 "cursor" | 
-/**  GitHub Copilot's command line, `copilot --acp --stdio`. */
+/**  GitHub Copilot's command line, `copilot --acp --stdio --allow-all`. */
 "copilot" | 
 /**  Claude Code, through its ACP adapter. */
 "claude";

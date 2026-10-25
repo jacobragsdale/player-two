@@ -24,7 +24,7 @@ Nothing runs on a machine unless its owner said so, where they can watch it and 
 
 **Agents**
 - `@bob` is Bob's machine. `@bob/name` is one of the folders he chose to share, picked with the Windows folder dialog.
-- Agents speak ACP. Cursor (`agent acp`) comes first. Copilot (`copilot --acp --stdio`) and Claude Code (through its ACP adapter) are alternatives.
+- Agents speak ACP. Cursor (`agent --force acp`) comes first. Copilot (`copilot --acp --stdio --allow-all`) and Claude Code (through its ACP adapter) are alternatives.
 - Setting up an agent is one step after joining. Cursor installs in one click, Copilot and Claude Code have steps to copy, and signing in is a button.
 - The desk finds agents installed on Windows and in each WSL distro. Only people who have a WSL distro, not counting Docker Desktop's, ever see WSL mentioned.
 - A run may do anything its owner's user can. The agent starts in its own mode that does not ask, and the desk says yes to anything that still asks.

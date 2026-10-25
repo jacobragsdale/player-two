@@ -31,10 +31,29 @@ fn listening(
 }
 
 #[tokio::test]
+async fn an_agent_with_a_mode_that_asks_nobody_is_put_in_it() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let (said, _heard) = mpsc::unbounded_channel();
+    let session = Session::open(&fake(), &folder.path().to_string_lossy(), said)
+        .await
+        .expect("the session opens");
+    let ended = session
+        .turn("edit, and say the mode".to_owned())
+        .await
+        .expect("the turn ends");
+    assert_eq!(
+        ended,
+        Ended::Answered("Did: edit done. Mode: bypassPermissions.".to_owned())
+    );
+}
+
+#[tokio::test]
 async fn a_turn_reports_what_the_agent_did_and_whatever_it_asks_to_do_is_allowed() {
     let folder = tempfile::tempdir().expect("a folder");
     let (said, heard) = mpsc::unbounded_channel();
-    let session = Session::open(&fake(), &folder.path().to_string_lossy(), said)
+    let mut asking = fake();
+    asking.args = vec!["--no-modes".to_owned()];
+    let session = Session::open(&asking, &folder.path().to_string_lossy(), said)
         .await
         .expect("the session opens");
     let kept = listening(heard);

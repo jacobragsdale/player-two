@@ -16,9 +16,9 @@ use crate::system;
 )]
 #[serde(rename_all = "lowercase")]
 pub enum AgentKind {
-    /// Cursor's command line, `agent acp`.
+    /// Cursor's command line, `agent --force acp`.
     Cursor,
-    /// GitHub Copilot's command line, `copilot --acp --stdio`.
+    /// GitHub Copilot's command line, `copilot --acp --stdio --allow-all`.
     Copilot,
     /// Claude Code, through its ACP adapter.
     Claude,
@@ -38,12 +38,15 @@ impl AgentKind {
         }
     }
 
-    /// What it is told so that it speaks ACP on its standard input and output.
+    /// What it is told so that it speaks ACP on its standard input and output, and does what
+    /// it needs without asking. Claude Code's adapter is put in its mode for that once its
+    /// session opens.
     #[must_use]
     pub fn args(self) -> &'static [&'static str] {
         match self {
-            Self::Cursor => &["acp"],
-            Self::Copilot => &["--acp", "--stdio"],
+            // A global option, so it goes before the command.
+            Self::Cursor => &["--force", "acp"],
+            Self::Copilot => &["--acp", "--stdio", "--allow-all"],
             Self::Claude => &[],
         }
     }
@@ -290,7 +293,7 @@ mod tests {
         assert_eq!(kinds, [AgentKind::Cursor, AgentKind::Claude]);
         assert_eq!(found[0].path, "/home/bob/.local/bin:/usr/bin");
         assert_eq!(found[0].home, "/home/bob");
-        assert_eq!(found[0].args, ["acp"]);
+        assert_eq!(found[0].args, ["--force", "acp"]);
         let ubuntu = RunsIn::Wsl("Ubuntu".to_owned());
         let chosen = |choice| for_system(&found, &ubuntu, choice).map(|agent| agent.kind);
         assert_eq!(chosen(None), Some(AgentKind::Cursor));

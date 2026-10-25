@@ -16,7 +16,7 @@ A teammate's request waits for one click, and after it the agent asks nobody. On
   - A teammate's request runs once its owner approves it, and your own tag runs at once. Either may do anything the owner's user can.
   - The mode buttons, the mode switch under the message box, handing over the steps, prompt cards and their notifications go, with `run.prompt`, `run.answer`, and `mode` and `steps_by` in `run.accepted`.
   - The card warns: "It can change files and run commands as you, without asking. Everything it reads or prints is shown in this chat."
-- [ ] **P7-5 Asking nobody.**
+- [x] **P7-5 Asking nobody.**
   - Each agent starts in its own mode that does not ask: Claude Code's adapter is set to `bypassPermissions` with `session/set_mode`, Copilot gets `--allow-all`, and Cursor gets `--force`.
   - The desk says yes to anything that still asks.
   - The setup check starts the agent exactly as a run does.
@@ -44,3 +44,5 @@ A teammate's request waits for one click, and after it the agent asks nobody. On
 A teammate's request runs on one click without another question, follow-ups and comments do what their tags say, and the hub keeps everything in Postgres.
 
 ## Notes
+
+- **P7-5: what Cursor's package says.** Read from its published package (2026.10.22), not run: `--force` is a global option, and its ACP server honours it unless the team's admin settings turn "run everything" off, when it asks as before and the desk says yes. Its permission options spell their `kind` `allow_once`, as the protocol does; only their ids are `allow-once`. Choosing "allow always" saves the rule to Cursor's allowlist, so the desk allows once. P7-14 need not check either.
