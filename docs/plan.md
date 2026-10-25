@@ -13,30 +13,26 @@ It runs inside one company network, among people who trust each other. The guard
 
 ## The rule every phase keeps
 
-Nothing runs on a machine unless its owner said so, at a mode they chose, where they can watch it and stop it.
+Nothing runs on a machine unless its owner said so, where they can watch it and stop it.
 
 ## v1
 
 **People and chats**
 - Channels open to everyone on the hub, and direct chats between two people. Threads under a message.
 - Joining with a join code that an admin sends: it holds the hub's address and the join token. The name is prefilled from the Windows user name.
-- Presence, unread counts, notifications, a tray icon, and starting at login.
+- Presence, unread counts, notifications, a tray icon, and starting at login. A comment in a thread notifies the people following it.
 
 **Agents**
 - `@bob` is Bob's machine. `@bob/name` is one of the folders he chose to share, picked with the Windows folder dialog.
 - Agents speak ACP. Cursor (`agent acp`) comes first. Copilot (`copilot --acp --stdio`) and Claude Code (through its ACP adapter) are alternatives.
 - Setting up an agent is one step after joining. Cursor installs in one click, Copilot and Claude Code have steps to copy, and signing in is a button.
 - The desk finds agents installed on Windows and in each WSL distro. Only people who have a WSL distro, not counting Docker Desktop's, ever see WSL mentioned.
-- A run has a mode: **read-only**, **ask** (each edit or command waits for a yes) or **full**.
+- A run may do anything its owner's user can. The agent starts in its own mode that does not ask, and the desk says yes to anything that still asks.
 
 **Runs**
-- Your own tag, sent from your own window, runs at once at your default mode. The default starts at ask, and switching to full is one click that is remembered.
-- Anyone else's tag waits for your approval card. On it you choose:
-  - the mode;
-  - where it runs (Windows or a WSL distro, shown only when both apply).
-
-  The card also warns that everything the agent reads or prints is shown in the chat. In ask mode you can let the asker approve the steps.
-- A request is a thread with one agent session. Each follow-up needs your click, unless you let the asker keep going. That lasts until you press Stop or the thread has been quiet for an hour.
+- Your own tag, sent from your own window, runs at once.
+- Anyone else's tag waits for your approval card. On it you choose where it runs (Windows or a WSL distro, shown only when both apply), and whether the asker may keep going. The card warns that the agent changes files and runs commands without asking, and that everything it reads or prints is shown in the chat.
+- Only a tag reaches an agent. A request is a thread with one agent session for each place it tags. A follow-up tags the place again in the thread, and needs your click unless you let the asker keep going. That lasts until you press Stop, or an hour after the agent last finished in the thread. A message without tags is a comment.
 - The asker can press Stop too.
 - Each place runs one thing at a time.
 - Nothing runs elevated. UAC and `sudo` prompts stay yours to answer.
@@ -44,8 +40,8 @@ Nothing runs on a machine unless its owner said so, at a mode they chose, where 
 - Passwords in URLs, and `password=`, `token=` and `Authorization:` values, are masked before a run's activity reaches the chat.
 
 **Hub**
-- One container and one SQLite file on NFS. Messages and runs are kept for 30 days, with a nightly backup.
-- Admin commands: `join-code` and `reset NAME`.
+- One container, with its data in a Postgres database in the same cluster. Messages and runs are kept for 30 days, and a thread goes whole once its newest event is that old. Backups are the database instance's.
+- Admin commands: `join-code`, `reset NAME` and `remove NAME`.
 
 **Shipping**
 - An unsigned, per-user Windows installer that the hub serves, along with updates. The hub and the app share one version number.
@@ -60,10 +56,11 @@ Nothing runs on a machine unless its owner said so, at a mode they chose, where 
 | App shell | Tauri, on the WebView2 already on every machine. | Small installer, fast start, light in the tray. |
 | Languages | Rust for the hub, the desk and the shell. TypeScript and React for the window. | The wire format is written once, in Rust. Rust handles Windows processes well. |
 | Desk | A library crate that runs inside the app. The window reaches it through one Tauri command and one event. The types are generated with `specta`. | One process on the desktop. Later, a headless desk is a thin `main` over the same crate. |
-| Hub | Rust, with axum and rusqlite. One pod, one replica. | Small image, and it shares the wire types with the desk. |
-| Storage | One SQLite file on a static NFS volume with `Retain`. Exclusive locking with WAL, and only the hub opens it. | NFS is the only storage available. Exclusive mode keeps WAL's index in memory, off the share. |
+| Hub | Rust, with axum and the `postgres` crate. One pod, one replica. | Small image, and it shares the wire types with the desk. The stream and presence live in the hub's memory. |
+| Storage | A Postgres database of its own in the cluster, reached by a plain URL from the secret. One connection; the hub exits when it loses it. | No NFS volumes, and no SQLite file locking over NFS. One connection keeps event ids in the order they were written, which the stream relies on. |
 | Trust | The hub is trusted. Everyone has a personal token from joining. No signatures. | High-trust internal network. The owner's click is the guardrail, not cryptography. |
 | Agents | ACP only, through the `agent-client-protocol` crate. | Cursor, Copilot and Claude Code all speak it. |
+| Runs | No modes. A request its owner approved may do anything, and asks nobody about each step. | The owner's click is the guardrail. Approving each step was friction, and an agent's own settings could skip it anyway. |
 | Windows and WSL | The desk runs on Windows and starts WSL agents with `wsl.exe -d <distro> --cd <path>`. | Machine help needs a Windows process. Devs in WSL keep their repos there. |
 | Shared folders | An explicit list in the app, each folder picked with the Windows folder dialog. Nothing is scanned. Only places that can run are advertised. | Nothing is shared unless its owner said so, and nobody's folders follow one layout. |
 | Versions | The hub and the app share one version number. An app that finds a different version on the hub updates first. | One team and one hub, so no compatibility matrix. |
@@ -82,6 +79,7 @@ Nothing runs on a machine unless its owner said so, at a mode they chose, where 
 | 4. Your own agent | Places, finding agents, process control, ACP, modes, the activity feed, the setup check | [`phase-4-own-agent.md`](plan/phase-4-own-agent.md) |
 | 5. Asking others | Approval cards, handing over the steps, follow-ups, the full help-with-my-machine flow | [`phase-5-asking-others.md`](plan/phase-5-asking-others.md) |
 | 6. Refinements | The folder dialog, setting up an agent, honest tags, notifications for what waits on you, small fixes | [`phase-6-refinements.md`](plan/phase-6-refinements.md) |
+| 7. One approval | No modes, only tags reach agents, following threads, the hub on Postgres | [`phase-7-one-approval.md`](plan/phase-7-one-approval.md) |
 
 ## Not doing
 
@@ -93,11 +91,13 @@ Nothing runs on a machine unless its owner said so, at a mode they chose, where 
 - Single sign-on.
 - Running anything elevated, or handling a password.
 - One-shot agent modes; ACP only.
+- Modes for a run, and approving each of its steps.
 
 ## Not decided
 
 Raised but neither accepted nor declined. Do not build these without asking:
 
+- A second machine for one person: today a name has one token, so one machine.
 - Deployed agents: a headless `player-two-desk` binary on a server, over the same desk crate.
 - Hiding secrets in a run's activity beyond the masking in phase 6.
 - A one-line description on each place, shown in the `@` list.
