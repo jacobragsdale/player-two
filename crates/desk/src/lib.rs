@@ -976,11 +976,13 @@ impl Desk {
                         });
                         self.tell(ui::Event::Chat { chat: chat.clone() });
                         self.tell(ui::Event::Overview);
-                        // A follow-up that keep going runs at once has nothing to click.
+                        // A follow-up that keep going runs at once, at every place it tags, has
+                        // nothing to click.
                         let runs_by_itself = notice.as_ref().zip(thread).is_some_and(|(notice, thread)| {
-                            notice.follows.iter().any(|place| {
-                                self.keeps_going(thread, place, &author).is_some() && !self.busy(place)
-                            })
+                            !notice.tagged.is_empty()
+                                && notice.tagged.iter().all(|place| {
+                                    self.keeps_going(thread, place, &author).is_some() && !self.busy(place)
+                                })
                         });
                         if let Some(notice) = notice.filter(|_| !runs_by_itself) {
                             self.tell(ui::Event::Notify {

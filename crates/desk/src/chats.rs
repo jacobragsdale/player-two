@@ -23,9 +23,9 @@ pub struct Notice {
     pub body: String,
     /// The thread it is in, which clicking it opens.
     pub thread: Option<EventId>,
-    /// For a follow-up outside a direct chat, the places of the person's it tags: when keep
-    /// going runs it, there is nothing to click, so nothing to notify.
-    pub follows: Vec<PlaceName>,
+    /// Outside a direct chat, the places of the person's that a message tags: when keep going
+    /// runs it at every one of them, there is nothing to click, so nothing to notify.
+    pub tagged: Vec<PlaceName>,
 }
 
 /// The start of a text, as a notification shows it.
@@ -206,7 +206,7 @@ impl Chats {
                     title: format!("{} {how}", self.whose_agent(&owner)),
                     body: shortened(&result.or_else(|| ended.reason.clone()).unwrap_or_default()),
                     thread: event.thread,
-                    follows: Vec::new(),
+                    tagged: Vec::new(),
                 })
             }
             _ => None,
@@ -229,18 +229,16 @@ impl Chats {
                 title: format!("{} replied in {}", event.author, self.title(&event.chat)),
                 body: shortened(&message.text),
                 thread: Some(root),
-                follows: Vec::new(),
+                tagged: Vec::new(),
             });
         }
-        let follows: Vec<PlaceName> = self
+        let follows_up = self
             .followed(event)
-            .into_iter()
-            .filter(|(tag, _)| tag.person == self.me)
-            .map(|(tag, _)| tag.place)
-            .collect();
+            .iter()
+            .any(|(tag, _)| tag.person == self.me);
         let title = if direct {
             event.author.to_string()
-        } else if follows.is_empty() {
+        } else if !follows_up {
             format!("{} in {}", event.author, self.title(&event.chat))
         } else {
             format!("{} follows up in {}", event.author, self.title(&event.chat))
@@ -249,9 +247,18 @@ impl Chats {
             title,
             body: shortened(&message.text),
             thread: event.thread,
-            // A direct message is worth a notification whatever runs; only a follow-up elsewhere
-            // is left quiet when keep going runs it.
-            follows: if direct { Vec::new() } else { follows },
+            // A direct message is worth a notification whatever runs; elsewhere, only a message
+            // that keep going runs everywhere it tags is left quiet.
+            tagged: if direct {
+                Vec::new()
+            } else {
+                message
+                    .tags
+                    .iter()
+                    .filter(|tag| tag.person == self.me)
+                    .map(|tag| tag.place.clone())
+                    .collect()
+            },
         })
     }
 
@@ -989,7 +996,7 @@ mod tests {
         let comment = message(4, &ops, "bob", Some(1), "thanks");
         let replied = chats.notice(&comment).expect("alice follows the thread");
         assert_eq!(replied.title, "bob replied in #ops");
-        assert!(replied.follows.is_empty(), "a comment reaches no agent");
+        assert!(replied.tagged.is_empty(), "a comment reaches no agent");
         let mut follow_up = message(5, &ops, "bob", Some(1), "@alice and the other one");
         if let Body::Message(text) = &mut follow_up.body {
             text.tags.push(player_two_core::event::Tag {
@@ -999,7 +1006,7 @@ mod tests {
         }
         let notice = chats.notice(&follow_up).expect("alice decides it");
         assert_eq!(notice.title, "bob follows up in #ops");
-        assert_eq!(notice.follows, [PlaceName::machine()]);
+        assert_eq!(notice.tagged, [PlaceName::machine()]);
     }
 
     #[test]
