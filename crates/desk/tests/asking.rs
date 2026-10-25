@@ -489,3 +489,43 @@ async fn each_tag_of_a_request_is_answered_on_its_own() {
     assert!(ran.waiting.is_empty());
     assert_eq!(ran.runs.len(), 1);
 }
+
+#[tokio::test]
+async fn a_tag_of_someone_who_just_joined_the_channel_reaches_them() {
+    let hub = Hub::start().await;
+    let (alice, jacob, _carol) = three(&hub).await;
+    assert_eq!(
+        jacob
+            .handle(Request::CreateChannel {
+                name: "side".to_owned()
+            })
+            .await,
+        Ok(Response::Done)
+    );
+    // Jacob's desk has not heard that alice joined since it last fetched the channels.
+    assert_eq!(
+        alice
+            .handle(Request::JoinChannel {
+                name: "side".to_owned()
+            })
+            .await,
+        Ok(Response::Done)
+    );
+    let sent = jacob
+        .handle(Request::Send {
+            chat: id("#side"),
+            thread: None,
+            text: "@alice read it".to_owned(),
+        })
+        .await;
+    assert_eq!(sent, Ok(Response::Done));
+    let view = chat(&jacob, "#side", None).await;
+    let item = &view.items[0];
+    assert_eq!(
+        item.tags.len(),
+        1,
+        "the tag reached alice: {:?}",
+        item.unknown
+    );
+    assert!(item.unknown.is_empty());
+}

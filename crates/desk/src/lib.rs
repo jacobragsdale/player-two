@@ -677,6 +677,19 @@ impl Desk {
     ) -> anyhow::Result<()> {
         let text = text.trim_end().to_owned();
         anyhow::ensure!(!text.trim().is_empty(), "there is nothing to send");
+        let outside = |chats: &Chats| {
+            tags::read(&text, chats.people())
+                .iter()
+                .any(|tag| !chats.in_chat(&chat, &tag.person))
+        };
+        let stale = self.state().chats.as_ref().is_some_and(outside);
+        if stale && matches!(chat, ChatId::Channel(_)) {
+            // Someone may have joined the channel since its members were last fetched.
+            let channels = self.hub()?.channels().await?;
+            if let Some(chats) = self.state().chats.as_mut() {
+                chats.set_channels(channels);
+            }
+        }
         let (me, tags) = {
             let state = self.state();
             let chats = state
