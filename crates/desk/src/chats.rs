@@ -375,18 +375,15 @@ impl Chats {
             .collect()
     }
 
-    /// Every run in a chat, by the request it answers, and the requests answered in any way:
-    /// run, declined or taken back.
+    /// Every run in a chat, by the request it answers, and the tags of each request answered in
+    /// any way: run, declined or taken back. Each tag is answered on its own.
     fn runs(
         &self,
         chat: &ChatId,
-    ) -> (
-        BTreeMap<EventId, Vec<RunView>>,
-        BTreeMap<EventId, Vec<PersonName>>,
-    ) {
+    ) -> (BTreeMap<EventId, Vec<RunView>>, BTreeMap<EventId, Vec<Tag>>) {
         let mut runs: BTreeMap<EventId, RunView> = BTreeMap::new();
         let mut requests: BTreeMap<EventId, EventId> = BTreeMap::new();
-        let mut answered: BTreeMap<EventId, Vec<PersonName>> = BTreeMap::new();
+        let mut answered: BTreeMap<EventId, Vec<Tag>> = BTreeMap::new();
         let events = self.events.get(chat).into_iter().flat_map(BTreeMap::values);
         for event in events {
             match &event.body {
@@ -398,10 +395,10 @@ impl Chats {
                         .map(|request| request.author.clone());
                     let may_stop = event.author == self.me || asker.as_ref() == Some(&self.me);
                     requests.insert(event.id, accepted.request);
-                    answered
-                        .entry(accepted.request)
-                        .or_default()
-                        .push(event.author.clone());
+                    answered.entry(accepted.request).or_default().push(Tag {
+                        person: event.author.clone(),
+                        place: accepted.place.clone(),
+                    });
                     runs.insert(
                         event.id,
                         RunView {
@@ -420,22 +417,20 @@ impl Chats {
                         },
                     );
                 }
-                Body::RunDeclined(RunDeclined { request }) => {
-                    answered
-                        .entry(*request)
-                        .or_default()
-                        .push(event.author.clone());
+                Body::RunDeclined(RunDeclined { request, place }) => {
+                    answered.entry(*request).or_default().push(Tag {
+                        person: event.author.clone(),
+                        place: place.clone(),
+                    });
                 }
                 Body::RunWithdrawn(RunWithdrawn { request }) => {
-                    // Taken back, it is answered for everyone it tagged.
-                    let tagged: Vec<PersonName> = self
+                    // Taken back, it is answered for every place it tagged.
+                    let tagged: Vec<Tag> = self
                         .events
                         .get(chat)
                         .and_then(|events| events.get(request))
                         .map(|asked| match &asked.body {
-                            Body::Message(message) => {
-                                message.tags.iter().map(|tag| tag.person.clone()).collect()
-                            }
+                            Body::Message(message) => message.tags.clone(),
                             _ => Vec::new(),
                         })
                         .unwrap_or_default();
@@ -490,7 +485,7 @@ impl Chats {
         message
             .tags
             .iter()
-            .filter(|tag| !answered_by.contains(&tag.person))
+            .filter(|tag| !answered_by.contains(tag))
             .cloned()
             .collect()
     }
@@ -667,7 +662,7 @@ impl Chats {
                     waiting: message
                         .tags
                         .iter()
-                        .filter(|tag| !answered_by.contains(&tag.person))
+                        .filter(|tag| !answered_by.contains(tag))
                         .map(|tag| Waiting {
                             tag: tag.clone(),
                             follows: followed

@@ -84,7 +84,7 @@ export function Approval({ chat, request, place, asker, follows }: Props): JSX.E
   const act = (approve: boolean): void => {
     setBusy(true);
     setError("");
-    const done = approve ? ask({ type: "approve", chat, request, place, runs_in: runsIn ?? "windows", keep_going: keepGoing }) : ask({ type: "decline", chat, request });
+    const done = approve ? ask({ type: "approve", chat, request, place, runs_in: runsIn ?? "windows", keep_going: keepGoing }) : ask({ type: "decline", chat, request, place });
     done.then(
       () => {
         setBusy(false);

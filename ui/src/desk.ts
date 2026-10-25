@@ -353,12 +353,17 @@ place: PlaceName;
 runs_in: RunsIn; 
 /**  Whether the asker's follow-ups run without a new click. */
 keep_going: boolean } | 
-/**  Declines a request to this person. */
+/**
+ *  Declines a request at one of this person's places. Its other tags are answered on
+ *  their own.
+ */
 { type: "decline"; 
 /**  The chat it is in. */
 chat: ChatId; 
 /**  The message asking. */
-request: number } | 
+request: number; 
+/**  The place it tagged. */
+place: PlaceName } | 
 /**  Takes back a request this person made. */
 { type: "withdraw"; 
 /**  The chat it is in. */

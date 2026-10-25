@@ -56,7 +56,7 @@ Every event has the same envelope: `{ id, chat, thread, author, kind, body, ts }
 |---|---|---|
 | `message` | `{ text, tags: [{ person, place }] }`. `text` is at most 64,000 characters. | Anyone in the chat. |
 | `run.accepted` | `{ request, place, runs_in, keep_going }`. `request` is the message being answered. | The owner of the tagged place. |
-| `run.declined` | `{ request }` | The owner of the tagged place. |
+| `run.declined` | `{ request, place }`: that place will not run it. Each tag of a request is answered on its own. | The owner of the tagged place. |
 | `run.withdrawn` | `{ request }` | Whoever wrote the request. |
 | `run.activity` | `{ run, items: [{ id, verb, object, outcome?, output? }] }`. `run` is the `id` of its `run.accepted`. | The owner. |
 | `run.result` | `{ run, text }`: the agent's answer, as Markdown. | The owner. |

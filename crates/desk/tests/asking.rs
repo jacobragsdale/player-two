@@ -266,7 +266,8 @@ async fn a_request_can_be_declined_or_taken_back() {
         alice
             .handle(Request::Decline {
                 chat: id(CHAT),
-                request: request.id
+                request: request.id,
+                place: PlaceName::machine(),
             })
             .await,
         Ok(Response::Done)
@@ -427,4 +428,60 @@ async fn a_follow_up_sent_to_another_system_starts_afresh_there() {
         "{:?}",
         failed.runs[0].reason
     );
+}
+
+#[tokio::test]
+async fn each_tag_of_a_request_is_answered_on_its_own() {
+    let hub = Hub::start().await;
+    let (alice, jacob, _carol) = three(&hub).await;
+    let folder = tempfile::tempdir().expect("a folder");
+    let path = folder.path().join("proj");
+    std::fs::create_dir(&path).expect("made");
+    let picked = path.to_string_lossy().into_owned();
+    alice.set_picker(std::sync::Arc::new(move || {
+        let folder = picked.clone();
+        Box::pin(async move { Some(folder) })
+    }));
+    assert_eq!(alice.handle(Request::PickFolder).await, Ok(Response::Done));
+    common::until(&jacob, "proj to be advertised", |overview| {
+        overview
+            .people
+            .iter()
+            .any(|person| person.name.as_str() == "alice" && person.places.len() == 2)
+    })
+    .await;
+
+    let ask = "@alice @alice/proj read it";
+    send(&jacob, ask, None).await;
+    let request = until(&alice, None, ask, "both tags to wait", |item| {
+        item.waiting.len() == 2
+    })
+    .await;
+    assert_eq!(
+        alice
+            .handle(Request::Decline {
+                chat: id(CHAT),
+                request: request.id,
+                place: PlaceName::new("proj").expect("a name"),
+            })
+            .await,
+        Ok(Response::Done)
+    );
+    let left = until(&jacob, None, ask, "the decline", |item| {
+        item.waiting.len() == 1
+    })
+    .await;
+    assert_eq!(left.waiting[0].tag.place, PlaceName::machine());
+    assert_eq!(
+        alice.handle(approve(&request, false)).await,
+        Ok(Response::Done)
+    );
+    let ran = until(&jacob, None, ask, "the machine to run it", |item| {
+        item.runs
+            .first()
+            .is_some_and(|run| run.state == RunState::Done)
+    })
+    .await;
+    assert!(ran.waiting.is_empty());
+    assert_eq!(ran.runs.len(), 1);
 }

@@ -115,7 +115,7 @@ impl Body {
     pub fn request(&self) -> Option<EventId> {
         match self {
             Self::RunAccepted(RunAccepted { request, .. })
-            | Self::RunDeclined(RunDeclined { request })
+            | Self::RunDeclined(RunDeclined { request, .. })
             | Self::RunWithdrawn(RunWithdrawn { request }) => Some(*request),
             _ => None,
         }
@@ -208,11 +208,13 @@ pub struct RunAccepted {
     pub keep_going: bool,
 }
 
-/// The owner declined a request.
+/// The owner declined a request at one of their places.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct RunDeclined {
     /// The message declined.
     pub request: EventId,
+    /// The place it tagged that will not run it.
+    pub place: PlaceName,
 }
 
 /// The asker took their request back.
@@ -330,8 +332,9 @@ mod tests {
             (
                 Body::RunDeclined(RunDeclined {
                     request: EventId(6),
+                    place: PlaceName::machine(),
                 }),
-                json!({"kind": "run.declined", "body": {"request": 6}}),
+                json!({"kind": "run.declined", "body": {"request": 6, "place": "machine"}}),
             ),
             (
                 Body::RunWithdrawn(RunWithdrawn {
@@ -391,9 +394,10 @@ mod tests {
             ts: 1_700_000_000_000,
             body: Body::RunDeclined(RunDeclined {
                 request: EventId(2),
+                place: PlaceName::machine(),
             }),
         };
-        let expected = json!({"id": 3, "chat": "#ops", "author": "alice", "ts": 1_700_000_000_000_i64, "kind": "run.declined", "body": {"request": 2}});
+        let expected = json!({"id": 3, "chat": "#ops", "author": "alice", "ts": 1_700_000_000_000_i64, "kind": "run.declined", "body": {"request": 2, "place": "machine"}});
         assert_eq!(serde_json::to_value(&event).expect("serializes"), expected);
         let read: Event = serde_json::from_value(expected).expect("deserializes");
         assert_eq!(read, event);

@@ -147,12 +147,15 @@ pub enum Request {
         /// Whether the asker's follow-ups run without a new click.
         keep_going: bool,
     },
-    /// Declines a request to this person.
+    /// Declines a request at one of this person's places. Its other tags are answered on
+    /// their own.
     Decline {
         /// The chat it is in.
         chat: ChatId,
         /// The message asking.
         request: EventId,
+        /// The place it tagged.
+        place: PlaceName,
     },
     /// Takes back a request this person made.
     Withdraw {

@@ -391,13 +391,17 @@ impl Desk {
                 .await?;
                 Ok(Response::Done)
             }
-            Request::Decline { chat, request } => {
+            Request::Decline {
+                chat,
+                request,
+                place,
+            } => {
                 let asked = self.event(&chat, request)?;
                 let thread = asked.thread.unwrap_or(asked.id);
                 self.post(
                     &chat,
                     Some(thread),
-                    Body::RunDeclined(player_two_core::event::RunDeclined { request }),
+                    Body::RunDeclined(player_two_core::event::RunDeclined { request, place }),
                 )
                 .await?;
                 Ok(Response::Done)

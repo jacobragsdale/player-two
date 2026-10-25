@@ -77,9 +77,9 @@ pub async fn may_post(
         (Body::RunAccepted(accepted), Some(request), _) => tags(&request)
             .iter()
             .any(|tag| &tag.person == author && tag.place == accepted.place),
-        (Body::RunDeclined(_), Some(request), _) => {
-            tags(&request).iter().any(|tag| &tag.person == author)
-        }
+        (Body::RunDeclined(declined), Some(request), _) => tags(&request)
+            .iter()
+            .any(|tag| &tag.person == author && tag.place == declined.place),
         (Body::RunWithdrawn(_), Some(request), _) => &request.author == author,
         (Body::RunStop(_), _, Some((_, accepted))) => asked_for(client, &accepted, author).await?,
         (_, _, Some((owner, _))) => &owner == author,
