@@ -12,7 +12,7 @@ A teammate's request waits for one click, and after it the agent asks nobody. On
   - The README and `AGENTS.md` say how.
 - [x] **P7-2 Retention by thread.** The nightly job deletes a thread whole once its newest event is older than `PLAYER_TWO_RETENTION_DAYS`, so a reply is never left without its message.
 - [x] **P7-3 Removing someone.** `player-two-hub remove NAME` drops their token, takes them out of every channel and off `GET /people`, and closes their stream. Their messages stay until retention takes them.
-- [ ] **P7-4 No modes.**
+- [x] **P7-4 No modes.**
   - A teammate's request runs once its owner approves it, and your own tag runs at once. Either may do anything the owner's user can.
   - The mode buttons, the mode switch under the message box, handing over the steps, prompt cards and their notifications go, with `run.prompt`, `run.answer`, and `mode` and `steps_by` in `run.accepted`.
   - The card warns: "It can change files and run commands as you, without asking. Everything it reads or prints is shown in this chat."
