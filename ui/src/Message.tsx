@@ -50,16 +50,7 @@ export function Message({ item, me, chat, onThread, busy }: Props): JSX.Element 
       {item.author !== me &&
         item.waiting
           .filter(({ tag }) => tag.person === me)
-          .map(({ tag, follows }) => (
-            <Approval
-              key={tag.place}
-              chat={chat}
-              request={item.id}
-              place={tag.place}
-              asker={item.author}
-              follows={follows === null ? null : { keep_going: follows.keep_going, runs_in: follows.runs_in }}
-            />
-          ))}
+          .map(({ tag, follows }) => <Approval key={tag.place} chat={chat} request={item.id} place={tag.place} asker={item.author} follows={follows === null ? null : { runs_in: follows.runs_in }} />)}
       {item.unknown.map((line) => (
         <p key={line} className="text-xs text-muted-foreground">
           ? {line}

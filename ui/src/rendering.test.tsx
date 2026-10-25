@@ -73,7 +73,6 @@ describe("an agent's run", () => {
       owner: "bob",
       place: "machine",
       runs_in: "windows",
-      keep_going: false,
       state: "working",
       reason: null,
       activity: [{ id: "t1", verb: "ran", object: "<img src=x onerror=pwned()>", outcome: "exit 0", output: HOSTILE }],

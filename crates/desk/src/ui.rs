@@ -438,8 +438,6 @@ pub struct RunView {
     pub place: PlaceName,
     /// Where on the machine.
     pub runs_in: RunsIn,
-    /// Whether its asker's follow-ups run without a new click.
-    pub keep_going: bool,
     /// How it stands.
     pub state: RunState,
     /// Why it failed or was stopped, when it says.

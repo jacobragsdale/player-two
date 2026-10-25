@@ -449,8 +449,6 @@ export type RunView = {
 	place: PlaceName,
 	/**  Where on the machine. */
 	runs_in: RunsIn,
-	/**  Whether its asker's follow-ups run without a new click. */
-	keep_going: boolean,
 	/**  How it stands. */
 	state: RunState,
 	/**  Why it failed or was stopped, when it says. */

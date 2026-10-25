@@ -22,20 +22,7 @@ test("a teammate's tag waits for them, and its asker may withdraw it", () => {
 
 function run(state: RunView["state"], steps: number): RunView {
   const activity = Array.from({ length: steps }, (_, at) => ({ id: `t${String(at)}`, verb: "read", object: `file-${String(at)}` }));
-  return {
-    id: 2,
-    thread: 1,
-    owner: "bob",
-    place: "machine",
-    runs_in: "windows",
-    keep_going: false,
-    state,
-    reason: null,
-    activity,
-    result: state === "done" ? "Fixed." : null,
-    may_stop: false,
-    mine: false
-  };
+  return { id: 2, thread: 1, owner: "bob", place: "machine", runs_in: "windows", state, reason: null, activity, result: state === "done" ? "Fixed." : null, may_stop: false, mine: false };
 }
 
 test("a working run shows its latest steps, and an ended one none, with the rest a click away", () => {

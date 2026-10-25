@@ -427,7 +427,6 @@ impl Chats {
                             owner: event.author.clone(),
                             place: accepted.place.clone(),
                             runs_in: accepted.runs_in.clone(),
-                            keep_going: accepted.keep_going,
                             state: RunState::Working,
                             reason: None,
                             activity: Vec::new(),

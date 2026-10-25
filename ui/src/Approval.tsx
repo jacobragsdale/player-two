@@ -17,7 +17,6 @@ function system(runsIn: RunsIn): string {
 }
 
 export interface Settings {
-  readonly keep_going: boolean;
   readonly runs_in: RunsIn | null;
 }
 
@@ -59,7 +58,8 @@ function Warnings({ keepGoing, asker, dirty }: { readonly keepGoing: boolean; re
 }
 
 export function Approval({ chat, request, place, asker, follows }: Props): JSX.Element {
-  const [keepGoing, setKeepGoing] = useState(follows?.keep_going ?? false);
+  // Unticked every time: keep going is given to one asker at a time, by a click of its own.
+  const [keepGoing, setKeepGoing] = useState(false);
   const [choices, setChoices] = useState<readonly RunsIn[]>([]);
   const [runsIn, setRunsIn] = useState<RunsIn | null>(follows?.runs_in ?? null);
   const [dirty, setDirty] = useState(false);
