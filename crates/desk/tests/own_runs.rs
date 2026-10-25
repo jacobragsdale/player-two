@@ -283,7 +283,8 @@ async fn stop_pressed_while_a_run_starts_stops_it() {
     });
     // Stop as soon as the run is in the chat, which is before its agent has started.
     let mut stopped = false;
-    for _ in 0..5000 {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while std::time::Instant::now() < deadline {
         if let Some((_, run)) = runs(&desk).await.into_iter().next() {
             let answer = desk
                 .handle(Request::Stop {
