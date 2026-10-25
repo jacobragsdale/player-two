@@ -393,8 +393,9 @@ impl Desk {
             Ok(Err(error)) => (Ending::Failed, Some(format!("{error:#}"))),
             Err(error) => (Ending::Failed, Some(error.to_string())),
         };
-        self.forget_run(report.run);
-        if how == Ending::Done {
+        // A Stop pressed as it finished still ends the session, and keeping going with it.
+        let stopped = self.finish_run(report.run);
+        if how == Ending::Done && !stopped {
             let kept = Kept {
                 thread: report.thread,
                 session,
@@ -451,6 +452,14 @@ impl Desk {
             eprintln!("error: cannot post how a run ended: {error:#}");
         }
         self.tell(crate::ui::Event::Overview);
+    }
+
+    /// Lets go of a run's place, and says whether it was stopped. Stop looks for the run under
+    /// the same lock, so it either finds the run going and is seen here, or finds it gone.
+    fn finish_run(&self, run: EventId) -> bool {
+        let mut runs = self.runs();
+        runs.active.retain(|_, active| active.run != Some(run));
+        self.was_stopped(run)
     }
 
     fn forget_run(&self, run: EventId) {
