@@ -344,19 +344,18 @@ async fn post_event(
                     store::insert_event(&transaction, &new.chat, new.thread, &me, &new.body, now)
                         .await?;
                 transaction.commit().await.map_err(anyhow::Error::from)?;
+                // Announced before the connection is let go, so that streams hear events in
+                // the order of their ids, which is what they resume by.
+                state.streams.publish(event.clone());
                 Ok(event)
             }
         }
     };
     match stored {
-        Ok(event) => {
-            let posted = Posted {
-                id: event.id,
-                ts: event.ts,
-            };
-            state.streams.publish(event);
-            Ok(Json(posted))
-        }
+        Ok(event) => Ok(Json(Posted {
+            id: event.id,
+            ts: event.ts,
+        })),
         Err(reason) => Err(Refusal::new(StatusCode::FORBIDDEN, reason)),
     }
 }
