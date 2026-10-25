@@ -641,10 +641,13 @@ impl Chats {
                 place,
             ) {
                 (None, _) => format!("nobody named {name} has joined"),
-                (Some(person), _) if !self.in_chat(chat, &person.name) => format!(
-                    "{name} is not in {}, so {name} cannot see this",
-                    self.title(chat)
-                ),
+                (Some(person), _) if !self.in_chat(chat, &person.name) => {
+                    let here = match chat {
+                        ChatId::Channel(_) => self.title(chat),
+                        ChatId::Direct(..) => "this direct chat".to_owned(),
+                    };
+                    format!("{name} is not in {here}, so {name} cannot see this")
+                }
                 // Someone advertising nothing has no agent: a machine with one is advertised.
                 (Some(person), _) if person.places.is_empty() && person.name == self.me => {
                     "you have not set up an agent yet; Settings shows how".to_owned()
@@ -1102,6 +1105,12 @@ mod tests {
                 "erin is not in #ops, so erin cannot see this",
                 "nobody named dave has joined",
             ]
+        );
+        let direct = ChatId::direct(name("alice"), name("bob")).expect("a chat");
+        chats.apply(message(2, &direct, "alice", None, "@erin, look"));
+        assert_eq!(
+            chats.view(&direct, None).items[0].unknown,
+            ["erin is not in this direct chat, so erin cannot see this"]
         );
     }
 
