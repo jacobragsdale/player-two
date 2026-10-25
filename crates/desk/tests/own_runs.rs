@@ -108,6 +108,11 @@ async fn a_busy_place_leaves_the_next_tag_waiting_and_stop_stops_it() {
         place: PlaceName::machine(),
     };
     assert_eq!(overview(&desk).await.busy, [PlaceName::machine()]);
+    assert_eq!(
+        overview(&desk).await.running,
+        ["your computer, for you"],
+        "what Update and Quit would stop"
+    );
     let refused = desk.handle(run_now.clone()).await;
     assert!(refused.is_err_and(|error| error.contains("still busy")));
 

@@ -576,6 +576,8 @@ impl Desk {
     }
 
     fn overview(&self) -> Overview {
+        // Before the state's lock: saying who each run is for takes it too.
+        let (busy, running) = (self.runs_going_at(), self.running());
         let state = self.state();
         let chats = state.chats.as_ref();
         Overview {
@@ -588,7 +590,8 @@ impl Desk {
             channels: chats
                 .map(|chats| chats.channels().to_vec())
                 .unwrap_or_default(),
-            busy: self.runs_going_at(),
+            busy,
+            running,
         }
     }
 

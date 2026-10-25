@@ -76,7 +76,7 @@ export function Joined(): JSX.Element {
     return <main className="flex h-full items-center justify-center text-muted-foreground">Loading…</main>;
   }
   if (overview.connection.state === "wrong_version") {
-    return <WrongVersion hub={overview.connection.hub} app={APP_VERSION} />;
+    return <WrongVersion hub={overview.connection.hub} app={APP_VERSION} running={overview.running} />;
   }
   const me = overview.me ?? "";
   if (settings) {

@@ -337,6 +337,8 @@ pub struct Overview {
     pub channels: Vec<ChannelInfo>,
     /// The person's places with a run going now.
     pub busy: Vec<PlaceName>,
+    /// The runs going on here, in words, which updating would stop.
+    pub running: Vec<String>,
 }
 
 /// One line of the chat list.

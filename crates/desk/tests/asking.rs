@@ -353,6 +353,10 @@ async fn the_asker_can_stop_a_run_but_nobody_else() {
     .await;
     let run = &working.runs[0];
     assert!(run.may_stop && !run.mine, "jacob asked, so he may stop it");
+    assert_eq!(
+        common::overview(&alice).await.running,
+        ["your computer, for jacob"]
+    );
     let stop = Request::Stop {
         chat: id(CHAT),
         thread: run.thread,

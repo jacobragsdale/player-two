@@ -169,6 +169,8 @@ export type Overview = {
 	channels: ChannelInfo[],
 	/**  The person's places with a run going now. */
 	busy: PlaceName[],
+	/**  The runs going on here, in words, which updating would stop. */
+	running: string[],
 };
 
 /**  One person, as `GET /people` lists them. */

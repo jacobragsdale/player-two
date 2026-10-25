@@ -74,6 +74,8 @@ pub(crate) struct Active {
     pub(crate) run: Option<EventId>,
     /// Its session, once open.
     session: Option<Arc<Session>>,
+    /// Who asked for it.
+    asker: PersonName,
 }
 
 /// A session, with where its reports arrive and the folder it runs in.
@@ -136,6 +138,34 @@ impl Desk {
             .collect()
     }
 
+    /// The runs going on or starting here, in words: where, and for whom. Quitting or updating
+    /// the app would stop them.
+    #[must_use]
+    pub fn running(&self) -> Vec<String> {
+        let settings = self.settings().unwrap_or_default();
+        let me = self.me();
+        let mut running: Vec<String> = self
+            .runs()
+            .active
+            .iter()
+            .map(|(place, active)| {
+                let place = settings.current(place);
+                let place = if place.is_machine() {
+                    "your computer".to_owned()
+                } else {
+                    place.to_string()
+                };
+                if me.as_ref() == Some(&active.asker) {
+                    format!("{place}, for you")
+                } else {
+                    format!("{place}, for {}", active.asker)
+                }
+            })
+            .collect();
+        running.sort();
+        running
+    }
+
     /// Whether a place has a run going or starting. Places are compared by the names they go by
     /// now, so that a renamed folder is the same place under its old name and its new one.
     pub(crate) fn busy(&self, place: &PlaceName) -> bool {
@@ -170,6 +200,7 @@ impl Desk {
                 Active {
                     run: None,
                     session: None,
+                    asker: order.asker.clone(),
                 },
             );
         }

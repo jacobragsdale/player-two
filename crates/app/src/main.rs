@@ -178,6 +178,37 @@ fn outside(url: &Url) {
     }
 }
 
+/// Quits, after asking when a run is going on here, since quitting stops it.
+fn quit_asking(app: &AppHandle) {
+    let running = app.state::<Desk>().running();
+    if running.is_empty() {
+        app.exit(0);
+        return;
+    }
+    #[cfg(windows)]
+    {
+        let app = app.clone();
+        // The question waits for the person; the tray's menu need not.
+        std::thread::spawn(move || {
+            let answer = rfd::MessageDialog::new()
+                .set_level(rfd::MessageLevel::Warning)
+                .set_title("Quit Player Two?")
+                .set_description(format!(
+                    "Quitting stops what your agent is doing: {}.",
+                    running.join("; ")
+                ))
+                .set_buttons(rfd::MessageButtons::OkCancel)
+                .show();
+            if answer == rfd::MessageDialogResult::Ok {
+                app.exit(0);
+            }
+        });
+    }
+    // Elsewhere, where the app is only built and tested, there is no dialog to ask with.
+    #[cfg(not(windows))]
+    app.exit(0);
+}
+
 /// The tray icon: a click opens the window, and its menu opens the window or its settings, or
 /// quits the app.
 fn tray(app: &App) -> tauri::Result<()> {
@@ -196,7 +227,7 @@ fn tray(app: &App) -> tauri::Result<()> {
                 // A window still loading opens on the chats; the next click finds it ready.
                 let _ = app.emit("desk", Event::Settings);
             }
-            "quit" => app.exit(0),
+            "quit" => quit_asking(app),
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
