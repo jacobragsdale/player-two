@@ -22,7 +22,7 @@ Find the first unticked task in the lowest-numbered phase file and continue from
   cargo test --workspace
   ```
 
-  The UI check comes first because the app crate embeds `ui/dist`. Windows CI runs the same. Tick a task that touches Windows-only code, or the app's behaviour on Windows, only after CI is green on your pushed branch.
+  The UI check comes first because the app crate embeds `ui/dist`. The tests make databases of their own in the Postgres at `PLAYER_TWO_TEST_DATABASE_URL`; start one with `docker run -d --name player-two-test-db -e POSTGRES_PASSWORD=postgres -p 127.0.0.1:55432:5432 postgres:17-alpine` and set it to `postgres://postgres:postgres@127.0.0.1:55432/postgres`. Windows CI runs the same. Tick a task that touches Windows-only code, or the app's behaviour on Windows, only after CI is green on your pushed branch.
 - Rust follows [Google's Rust style guide](https://google.github.io/styleguide/rustguide.html), except its Chrome- and Fuchsia-only rules. Here that means async on tokio, plain `#[test]` and `#[tokio::test]`, and a normal Cargo workspace. Use `anyhow` for errors in the two binaries. `unsafe` goes only in `crates/win`, and every block gets a `SAFETY:` comment.
 - The UI is strict TypeScript: no `any`, no `as` casts, no `!`, no `@ts-ignore`. Its types for talking to the desk are generated from Rust. Never write them by hand.
 - Do not weaken `rustfmt.toml`, the clippy command, `ui/tsconfig.json`, or the ESLint or Prettier configuration.
@@ -45,7 +45,7 @@ These paths appear during phase 0.
 | Path | What it is |
 |---|---|
 | `crates/core/` | The wire types the hub and the desk share. No disk, no network, no processes. |
-| `crates/hub/` | The hub: its SQLite database, its HTTP API and its admin commands. Builds `player-two-hub`. |
+| `crates/hub/` | The hub: its Postgres database, its HTTP API and its admin commands. Builds `player-two-hub`. |
 | `crates/desk/` | One person's side: their hub client, places, agents, approvals and runs. Everything the window does goes through it. |
 | `crates/app/` | The Tauri shell: the window, tray, single instance, start at login and updates. It is thin and passes the UI's requests to the desk. |
 | `crates/win/` | The only `unsafe` code: Windows calls no crate covers. Made only if a task needs it. |

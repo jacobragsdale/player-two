@@ -2,7 +2,7 @@
 
 A chat for a small team and the coding agents on their own Windows machines. You can ask a teammate's agent to fix your proxy, or drive your own agent in a channel while others watch. Nothing runs on anyone's machine until its owner says so.
 
-It has two parts. The **hub** is one small server the team shares, holding the chats in one SQLite file. The **app** is a Windows program, built with Tauri, that each person installs; it keeps their identity, talks to the hub, and runs their agent when they say so.
+It has two parts. The **hub** is one small server the team shares, holding the chats in a Postgres database. The **app** is a Windows program, built with Tauri, that each person installs; it keeps their identity, talks to the hub, and runs their agent when they say so.
 
 The plan, with what v1 does and does not do, is in [`docs/plan.md`](docs/plan.md).
 
@@ -28,18 +28,25 @@ If you work in WSL, install an agent inside your distro too, for Cursor's with `
 
 ## Running a hub
 
-The hub is one container, run on Kubernetes with its files on NFS. The manifests are in [`deploy/k8s/`](deploy/k8s/); fill in each `TODO` first.
+The hub is one container, run on Kubernetes, with its data in a Postgres database of its own in the same cluster. The manifests are in [`deploy/k8s/`](deploy/k8s/); fill in each `TODO` first.
 
-1. On the NFS server, make the two folders that `deploy/k8s/data.yaml` names, writable by user 10001.
-2. Make the secret with the two tokens:
+1. In the cluster's Postgres, make a role and a database it owns. The hub makes its tables when it first starts.
+
+   ```sql
+   CREATE ROLE player_two LOGIN PASSWORD '<password>';
+   CREATE DATABASE player_two OWNER player_two;
+   ```
+
+2. Make the secret with the two tokens and the database's address:
 
    ```sh
    kubectl create secret generic player-two \
      --from-literal=join-token=$(openssl rand -hex 24) \
-     --from-literal=admin-token=$(openssl rand -hex 24)
+     --from-literal=admin-token=$(openssl rand -hex 24) \
+     --from-literal=database-url=postgres://player_two:<password>@<host>/player_two
    ```
 
-3. Apply `data.yaml` once, and never delete it. Then apply `hub.yaml`.
+3. Apply `hub.yaml`.
 4. Print a join code to send people:
 
    ```sh
@@ -48,7 +55,7 @@ The hub is one container, run on Kubernetes with its files on NFS. The manifests
 
 If someone's machine is replaced, they cannot join again under their name until an admin runs `player-two-hub reset NAME` the same way. Their chats are kept.
 
-The database is copied every night at 03:00 UTC to the backups folder, and the newest seven copies are kept. To restore one, scale the deployment to 0, copy it over `player-two.db` in the data folder, delete any `player-two.db-wal` there, and scale back to 1. Messages older than 30 days are deleted; `PLAYER_TWO_RETENTION_DAYS` changes that.
+Backups are the Postgres instance's. To restore one, scale the deployment to 0, restore the `player_two` database as you would any other, and scale back to 1. When the hub cannot reach its database it stops, and Kubernetes starts it again. Messages older than 30 days are deleted; `PLAYER_TWO_RETENTION_DAYS` changes that.
 
 ## Releasing
 
@@ -66,9 +73,11 @@ Each app finds the hub on another version the next time it connects, and offers 
 
 ## Developing
 
-[`AGENTS.md`](AGENTS.md) has the layout and the checks every commit passes. In short, from the repository's root:
+[`AGENTS.md`](AGENTS.md) has the layout and the checks every commit passes. The tests need a Postgres to make their databases in. In short, from the repository's root:
 
 ```sh
+docker run -d --name player-two-test-db -e POSTGRES_PASSWORD=postgres -p 127.0.0.1:55432:5432 postgres:17-alpine
+export PLAYER_TWO_TEST_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:55432/postgres
 npm --prefix ui ci
 npm --prefix ui run check
 cargo fmt --all --check

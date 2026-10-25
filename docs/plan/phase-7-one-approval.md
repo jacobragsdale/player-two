@@ -4,7 +4,7 @@ A teammate's request waits for one click, and after it the agent asks nobody. On
 
 ## Tasks
 
-- [ ] **P7-1 The hub on Postgres.**
+- [x] **P7-1 The hub on Postgres.**
   - The hub keeps its data in a Postgres database of its own, at `PLAYER_TWO_DATABASE_URL`, over one connection. It makes and updates its tables at start, with the schema's version in a one-row table.
   - It exits, saying why, when it cannot connect or loses the connection. Kubernetes starts it again.
   - SQLite goes: `PLAYER_TWO_DB`, `PLAYER_TWO_BACKUPS`, `quick_check`, the nightly copies, `deploy/k8s/data.yaml` and its NFS volumes. Backups are the database instance's.

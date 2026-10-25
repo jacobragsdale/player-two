@@ -17,7 +17,6 @@ use player_two_core::api::{
 use player_two_core::event::{Event, EventId};
 use player_two_core::join_code::JoinCode;
 use player_two_core::names::{ChannelName, ChatId, PersonName};
-use rusqlite::OptionalExtension;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
@@ -37,8 +36,6 @@ pub struct Config {
     pub admin_token: String,
     /// The hub's own address, as people reach it: for join codes and the update manifest.
     pub url: String,
-    /// Where the nightly copies of the database go.
-    pub backups: PathBuf,
     /// How many days events are kept.
     pub retention_days: u32,
     /// The folder holding the installer and its signature.
@@ -185,19 +182,17 @@ impl FromRequestParts<AppState> for Caller {
             )
         };
         let token = digest(bearer(parts).ok_or_else(refused)?);
-        let name: Option<String> = state
+        let row = state
             .db
-            .call(move |connection| {
-                Ok(connection
-                    .query_row(
-                        "SELECT name FROM people WHERE token_sha256 = ?1",
-                        [&token],
-                        |row| row.get(0),
-                    )
-                    .optional()?)
-            })
-            .await?;
-        let name = name.ok_or_else(refused)?;
+            .lock()
+            .await
+            .query_opt("SELECT name FROM people WHERE token_sha256 = $1", &[&token])
+            .await
+            .map_err(anyhow::Error::from)?;
+        let name: String = row
+            .ok_or_else(refused)?
+            .try_get(0)
+            .map_err(anyhow::Error::from)?;
         Ok(Self(PersonName::new(name).map_err(anyhow::Error::from)?))
     }
 }
@@ -217,20 +212,20 @@ async fn join(
     let digest = digest(&token);
     let now = state.clock.now();
     let name = request.name;
-    let joined = state
+    // A name whose token was dropped by `reset` may be joined again; any other is taken.
+    let changed = state
         .db
-        .call(move |connection| {
-            // A name whose token was dropped by `reset` may be joined again; any other is taken.
-            let changed = connection.execute(
-                "INSERT INTO people (name, token_sha256, joined) VALUES (?1, ?2, ?3)
-                 ON CONFLICT (name) DO UPDATE SET token_sha256 = excluded.token_sha256
-                 WHERE people.token_sha256 IS NULL",
-                (name.as_str(), &digest, now),
-            )?;
-            Ok(changed == 1)
-        })
-        .await?;
-    if joined {
+        .lock()
+        .await
+        .execute(
+            "INSERT INTO people (name, token_sha256, joined) VALUES ($1, $2, $3)
+             ON CONFLICT (name) DO UPDATE SET token_sha256 = excluded.token_sha256
+             WHERE people.token_sha256 IS NULL",
+            &[&name.as_str(), &digest, &now],
+        )
+        .await
+        .map_err(anyhow::Error::from)?;
+    if changed == 1 {
         Ok(Json(Joined { token }))
     } else {
         Err(Refusal::new(
@@ -247,12 +242,7 @@ fn channel_name(name: String) -> Reply<ChannelName> {
 
 /// `GET /channels`.
 async fn list_channels(State(state): State<AppState>, _: Caller) -> Reply<Json<Vec<ChannelInfo>>> {
-    Ok(Json(
-        state
-            .db
-            .call(|connection| store::channels(connection))
-            .await?,
-    ))
+    Ok(Json(store::channels(&*state.db.lock().await).await?))
 }
 
 /// `POST /channels`.
@@ -263,10 +253,7 @@ async fn create_channel(
 ) -> Reply<StatusCode> {
     let now = state.clock.now();
     let name = request.name;
-    let made = state
-        .db
-        .call(move |connection| store::create_channel(connection, &name, &me, now))
-        .await?;
+    let made = store::create_channel(&mut *state.db.lock().await, &name, &me, now).await?;
     if made {
         Ok(StatusCode::CREATED)
     } else {
@@ -284,10 +271,7 @@ async fn join_channel(
     Path(name): Path<String>,
 ) -> Reply<StatusCode> {
     let name = channel_name(name)?;
-    let joined = state
-        .db
-        .call(move |connection| store::join_channel(connection, &name, &me))
-        .await?;
+    let joined = store::join_channel(&*state.db.lock().await, &name, &me).await?;
     if joined {
         Ok(StatusCode::NO_CONTENT)
     } else {
@@ -305,10 +289,7 @@ async fn leave_channel(
     Path(name): Path<String>,
 ) -> Reply<StatusCode> {
     let name = channel_name(name)?;
-    state
-        .db
-        .call(move |connection| store::leave_channel(connection, &name, &me))
-        .await?;
+    store::leave_channel(&*state.db.lock().await, &name, &me).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -334,18 +315,14 @@ async fn chat_events(
         .map_err(|error| Refusal::new(StatusCode::BAD_REQUEST, error.to_string()))?;
     let limit = query.limit.unwrap_or(PAGE_USUAL).clamp(1, PAGE_MOST);
     let before = query.before.map(EventId);
-    let page = state
-        .db
-        .call(move |connection| {
-            if store::may_use(connection, &chat, &me)? {
-                Ok(Some(store::page(connection, &chat, before, limit)?))
-            } else {
-                Ok(None)
-            }
-        })
-        .await?;
-    page.map(Json)
-        .ok_or_else(|| Refusal::new(StatusCode::FORBIDDEN, "you are not in that chat"))
+    let client = state.db.lock().await;
+    if !store::may_use(&*client, &chat, &me).await? {
+        return Err(Refusal::new(
+            StatusCode::FORBIDDEN,
+            "you are not in that chat",
+        ));
+    }
+    Ok(Json(store::page(&*client, &chat, before, limit).await?))
 }
 
 /// `POST /events`.
@@ -355,19 +332,20 @@ async fn post_event(
     Input(new): Input<NewEvent>,
 ) -> Reply<Json<Posted>> {
     let now = state.clock.now();
-    let stored = state
-        .db
-        .call(move |connection| {
-            let transaction = connection.transaction()?;
-            if let Verdict::Refused(reason) = rules::may_post(&transaction, &new, &me)? {
-                return Ok(Err(reason));
+    let stored = {
+        let mut client = state.db.lock().await;
+        let transaction = client.transaction().await.map_err(anyhow::Error::from)?;
+        match rules::may_post(&transaction, &new, &me).await? {
+            Verdict::Refused(reason) => Err(reason),
+            Verdict::Allowed => {
+                let event =
+                    store::insert_event(&transaction, &new.chat, new.thread, &me, &new.body, now)
+                        .await?;
+                transaction.commit().await.map_err(anyhow::Error::from)?;
+                Ok(event)
             }
-            let event =
-                store::insert_event(&transaction, &new.chat, new.thread, &me, &new.body, now)?;
-            transaction.commit()?;
-            Ok(Ok(event))
-        })
-        .await?;
+        }
+    };
     match stored {
         Ok(event) => {
             let posted = Posted {
@@ -406,21 +384,14 @@ async fn set_places(
             "only the machine may be called machine",
         ));
     }
-    let who = me.clone();
-    state
-        .db
-        .call(move |connection| store::set_places(connection, &who, &places))
-        .await?;
+    store::set_places(&mut *state.db.lock().await, &me, &places).await?;
     state.streams.announce(&me);
     Ok(StatusCode::NO_CONTENT)
 }
 
 /// `GET /people`.
 async fn people(State(state): State<AppState>, _: Caller) -> Reply<Json<Vec<Person>>> {
-    let people = state
-        .db
-        .call(|connection| store::people(connection))
-        .await?;
+    let people = store::people(&*state.db.lock().await).await?;
     Ok(Json(
         people
             .into_iter()
@@ -470,16 +441,16 @@ async fn admin_reset(
     Input(request): Input<ResetRequest>,
 ) -> Reply<StatusCode> {
     let name = request.name;
-    let who = name.clone();
     let changed = state
         .db
-        .call(move |connection| {
-            Ok(connection.execute(
-                "UPDATE people SET token_sha256 = NULL WHERE name = ?1",
-                [who.as_str()],
-            )?)
-        })
-        .await?;
+        .lock()
+        .await
+        .execute(
+            "UPDATE people SET token_sha256 = NULL WHERE name = $1",
+            &[&name.as_str()],
+        )
+        .await
+        .map_err(anyhow::Error::from)?;
     if changed == 0 {
         return Err(Refusal::new(
             StatusCode::NOT_FOUND,
@@ -490,12 +461,15 @@ async fn admin_reset(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// `GET /healthz`: answers once the database answers.
+/// `GET /healthz`: answers while the database answers.
 async fn healthz(State(state): State<AppState>) -> Reply<&'static str> {
     state
         .db
-        .call(|connection| Ok(connection.query_row("SELECT 1", [], |_| Ok(()))?))
-        .await?;
+        .lock()
+        .await
+        .execute("SELECT 1", &[])
+        .await
+        .map_err(anyhow::Error::from)?;
     Ok("ok")
 }
 

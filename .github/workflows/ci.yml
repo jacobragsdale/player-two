@@ -25,7 +25,17 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
+      # The tests make databases in the PostgreSQL the runner comes with, which starts disabled.
+      - name: Start PostgreSQL
+        shell: pwsh
+        run: |
+          $service = Get-Service -Name postgresql*
+          Set-Service -InputObject $service -StartupType Manual
+          Start-Service -InputObject $service
+          & "$env:PGBIN\pg_isready" --timeout=60
       - run: cargo test --workspace
+        env:
+          PLAYER_TWO_TEST_DATABASE_URL: postgres://postgres:root@localhost:5432/postgres
       # Run from the root, where the CLI finds crates/app/tauri.conf.json.
       - run: npm --prefix ui exec -- tauri build --debug
       - uses: actions/upload-artifact@v7

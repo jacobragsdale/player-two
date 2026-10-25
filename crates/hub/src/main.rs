@@ -67,18 +67,18 @@ async fn serve() -> anyhow::Result<()> {
         join_token: required("PLAYER_TWO_JOIN_TOKEN")?,
         admin_token: required("PLAYER_TWO_ADMIN_TOKEN")?,
         url: required("PLAYER_TWO_URL")?.trim_end_matches('/').to_owned(),
-        backups: env::var_os("PLAYER_TWO_BACKUPS")
-            .map_or_else(|| PathBuf::from("/backups"), PathBuf::from),
         release: env::var_os("PLAYER_TWO_RELEASE")
             .map_or_else(|| PathBuf::from("/app/release"), PathBuf::from),
         retention_days: env::var("PLAYER_TWO_RETENTION_DAYS")
             .map_or(Ok(30), |days| days.parse())
             .context("PLAYER_TWO_RETENTION_DAYS must be a number of days")?,
     };
-    let path = env::var_os("PLAYER_TWO_DB")
-        .map_or_else(|| PathBuf::from("/data/player-two.db"), PathBuf::from);
+    let database: tokio_postgres::Config = required("PLAYER_TWO_DATABASE_URL")?
+        .parse()
+        .context("PLAYER_TWO_DATABASE_URL must be a postgres:// address")?;
+    let (db, lost) = Db::connect(&database).await?;
     let state = AppState {
-        db: Db::open(&path)?,
+        db,
         config: Arc::new(config),
         clock: Clock::default(),
         streams: Arc::new(Streams::default()),
@@ -92,10 +92,12 @@ async fn serve() -> anyhow::Result<()> {
         "player-two-hub {} listening on port {port}",
         env!("CARGO_PKG_VERSION")
     );
-    axum::serve(listener, router(state))
-        .with_graceful_shutdown(stopped())
-        .await?;
-    Ok(())
+    let served = axum::serve(listener, router(state)).with_graceful_shutdown(stopped());
+    // Without its database the hub can do nothing, so it stops, and Kubernetes starts it again.
+    tokio::select! {
+        served = served => Ok(served?),
+        lost = lost => Err(lost),
+    }
 }
 
 /// Resolves when the hub is told to stop: Ctrl+C, or Kubernetes' SIGTERM.

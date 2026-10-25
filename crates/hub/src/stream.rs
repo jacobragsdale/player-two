@@ -129,13 +129,12 @@ impl Drop for Here {
             );
             tokio::spawn(async move {
                 let recorded = db
-                    .call(move |connection| {
-                        connection.execute(
-                            "UPDATE people SET last_seen = ?1 WHERE name = ?2",
-                            (now, name.as_str()),
-                        )?;
-                        Ok(())
-                    })
+                    .lock()
+                    .await
+                    .execute(
+                        "UPDATE people SET last_seen = $1 WHERE name = $2",
+                        &[&now, &name.as_str()],
+                    )
                     .await;
                 if let Err(error) = recorded {
                     eprintln!("error: cannot record when someone left: {error:#}");
@@ -180,11 +179,7 @@ async fn feed(
     };
     let mut sent = after.unwrap_or(EventId(0));
     if let Some(after) = after {
-        let who = me.clone();
-        let backlog = state
-            .db
-            .call(move |connection| store::events_after(connection, after, &who))
-            .await;
+        let backlog = store::events_after(&*state.db.lock().await, after, &me).await;
         let Ok(backlog) = backlog else {
             return;
         };
@@ -231,10 +226,7 @@ fn line(event: &Event) -> SseEvent {
 }
 
 async fn may_see(state: &AppState, chat: &ChatId, me: &PersonName) -> bool {
-    let (chat, me) = (chat.clone(), me.clone());
-    state
-        .db
-        .call(move |connection| store::may_use(connection, &chat, &me))
+    store::may_use(&*state.db.lock().await, chat, me)
         .await
         .unwrap_or(false)
 }

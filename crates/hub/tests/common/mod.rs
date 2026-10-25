@@ -1,4 +1,4 @@
-//! A real hub for the tests: in-process, on a free port, with its database in a temporary folder.
+//! A real hub for the tests: in-process, on a free port, with a database of its own.
 
 // Each test file uses part of this, and is compiled on its own.
 #![allow(dead_code)]
@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use player_two_hub::app::{AppState, Config, router};
 use player_two_hub::clock::Clock;
-use player_two_hub::db::Db;
+use player_two_hub::db::{Db, TestDatabase};
 use player_two_hub::stream::Streams;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -23,6 +23,7 @@ pub struct Hub {
     pub clock: Clock,
     pub client: reqwest::Client,
     _folder: tempfile::TempDir,
+    _database: TestDatabase,
 }
 
 /// What a request came back with.
@@ -46,7 +47,10 @@ impl Answer {
 impl Hub {
     pub async fn start() -> Self {
         let folder = tempfile::tempdir().expect("a temporary folder");
-        let db = Db::open(&folder.path().join("hub.db")).expect("the database opens");
+        let database = TestDatabase::new().await.expect("a test database");
+        let (db, _) = Db::connect(&database.config())
+            .await
+            .expect("the database opens");
         let clock = Clock::fixed(1_700_000_000_000);
         let state = AppState {
             db,
@@ -54,7 +58,6 @@ impl Hub {
                 join_token: JOIN_TOKEN.to_owned(),
                 admin_token: ADMIN_TOKEN.to_owned(),
                 url: "https://hub.example".to_owned(),
-                backups: folder.path().join("backups"),
                 retention_days: 30,
                 release: folder.path().join("release"),
             }),
@@ -73,6 +76,7 @@ impl Hub {
             clock,
             client: reqwest::Client::new(),
             _folder: folder,
+            _database: database,
         }
     }
 

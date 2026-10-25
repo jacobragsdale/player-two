@@ -1,8 +1,9 @@
-# The hub: one pod, never two, since only one process may open its database. Apply data.yaml
-# first, and make the secret once:
+# The hub: one pod, never two, since the stream and who is here live in its memory. Make the
+# secret once, with the address of the hub's own Postgres database in this cluster:
 #   kubectl create secret generic player-two \
 #     --from-literal=join-token=$(openssl rand -hex 24) \
-#     --from-literal=admin-token=$(openssl rand -hex 24)
+#     --from-literal=admin-token=$(openssl rand -hex 24) \
+#     --from-literal=database-url=postgres://player_two:PASSWORD@HOST/player_two
 # Fill in every TODO.
 apiVersion: v1
 kind: List
@@ -13,7 +14,7 @@ items:
       name: player-two
     spec:
       replicas: 1
-      # The old pod lets go of the database before the new one opens it.
+      # The old pod has stopped before the new one starts.
       strategy:
         type: Recreate
       selector:
@@ -46,22 +47,15 @@ items:
                     secretKeyRef:
                       name: player-two
                       key: admin-token
+                - name: PLAYER_TWO_DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: player-two
+                      key: database-url
               readinessProbe:
                 httpGet:
                   path: /healthz
                   port: 8787
-              volumeMounts:
-                - name: data
-                  mountPath: /data
-                - name: backups
-                  mountPath: /backups
-          volumes:
-            - name: data
-              persistentVolumeClaim:
-                claimName: player-two-data
-            - name: backups
-              persistentVolumeClaim:
-                claimName: player-two-backups
   - apiVersion: v1
     kind: Service
     metadata:

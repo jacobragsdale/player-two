@@ -14,7 +14,7 @@ use player_two_desk::places::Settings;
 use player_two_desk::ui::{ChatView, Connection, Overview, Request, Response};
 use player_two_hub::app::{AppState, Config, router};
 use player_two_hub::clock::Clock;
-use player_two_hub::db::Db;
+use player_two_hub::db::{Db, TestDatabase};
 use player_two_hub::stream::Streams;
 
 pub const JOIN_TOKEN: &str = "join-token";
@@ -24,18 +24,22 @@ pub struct Hub {
     pub base: String,
     pub state: AppState,
     folder: tempfile::TempDir,
+    _database: TestDatabase,
 }
 
 impl Hub {
     pub async fn start() -> Self {
         let folder = tempfile::tempdir().expect("a temporary folder");
+        let database = TestDatabase::new().await.expect("a test database");
+        let (db, _) = Db::connect(&database.config())
+            .await
+            .expect("the database opens");
         let state = AppState {
-            db: Db::open(&folder.path().join("hub.db")).expect("the database opens"),
+            db,
             config: Arc::new(Config {
                 join_token: JOIN_TOKEN.to_owned(),
                 admin_token: "admin-token".to_owned(),
                 url: String::new(),
-                backups: folder.path().join("backups"),
                 retention_days: 30,
                 release: folder.path().join("release"),
             }),
@@ -52,6 +56,7 @@ impl Hub {
             base,
             state,
             folder,
+            _database: database,
         }
     }
 

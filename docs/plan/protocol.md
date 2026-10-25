@@ -105,37 +105,25 @@ The desk keeps its files in the app's data folder, which Tauri names after the a
 
 ## Storage
 
-The hub opens its database with these, in this order, then runs `PRAGMA quick_check`. If the check does not return `ok`, the hub refuses to start and says so.
-
-```sql
-PRAGMA locking_mode = EXCLUSIVE;
-PRAGMA journal_mode = WAL;
-PRAGMA synchronous = FULL;
-```
-
-No other process opens the file. The admin commands are HTTP calls to the running hub.
+The hub keeps its data in a Postgres database of its own, at `PLAYER_TWO_DATABASE_URL`, over one connection, which every request takes in turn. Events are therefore written one at a time, and their ids come in the order they were written. The hub stops, saying why, when it cannot connect or loses the connection; Kubernetes starts it again. Nothing else uses the database. The admin commands are HTTP calls to the running hub.
 
 | Table | Columns |
 |---|---|
 | `people` | `name` (key), `token_sha256`, `joined`, `last_seen` |
 | `channels` | `name` (key), `created_by`, `created` |
 | `members` | `channel`, `name` |
-| `events` | `id` (key, autoincrement), `chat`, `thread`, `author`, `kind`, `body` (JSON), `ts` |
+| `events` | `id` (key, an identity), `chat`, `thread`, `author`, `kind`, `body` (JSON), `ts` |
 | `places` | `owner`, `name`, `kind`; the key is `owner` and `name` together |
 
-`PRAGMA user_version` holds the schema's version, and the hub brings older files forward on start.
+The one row of `schema_version` holds the schema's version, and the hub brings an older database forward on start.
 
-Every night at 03:00 UTC, the hub:
-1. deletes events older than `PLAYER_TWO_RETENTION_DAYS`;
-2. writes `VACUUM INTO '<backups>/player-two-<date>.db'`;
-3. deletes all but the newest 7 backups.
+Every night at 03:00 UTC, the hub deletes events older than `PLAYER_TWO_RETENTION_DAYS`. Backups are the database instance's.
 
 ## The hub's environment
 
 | Variable | Default | What it is |
 |---|---|---|
-| `PLAYER_TWO_DB` | `/data/player-two.db` | The database file. |
-| `PLAYER_TWO_BACKUPS` | `/backups` | Where the nightly copies go. |
+| `PLAYER_TWO_DATABASE_URL` | none, required | The hub's database, as `postgres://user:password@host/database`. |
 | `PLAYER_TWO_JOIN_TOKEN` | none, required | The shared join token. |
 | `PLAYER_TWO_ADMIN_TOKEN` | none, required | For `/admin/*`. |
 | `PLAYER_TWO_URL` | none, required | The hub's own address, for join codes and the update manifest. |
