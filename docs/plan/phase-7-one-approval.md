@@ -11,7 +11,7 @@ A teammate's request waits for one click, and after it the agent asks nobody. On
   - Tests make a database of their own in the Postgres at `PLAYER_TWO_TEST_DATABASE_URL`, and drop it after. Without it they fail and say how to start one. Windows CI starts the PostgreSQL the runner has.
   - The README and `AGENTS.md` say how.
 - [x] **P7-2 Retention by thread.** The nightly job deletes a thread whole once its newest event is older than `PLAYER_TWO_RETENTION_DAYS`, so a reply is never left without its message.
-- [ ] **P7-3 Removing someone.** `player-two-hub remove NAME` drops their token, takes them out of every channel and off `GET /people`, and closes their stream. Their messages stay until retention takes them.
+- [x] **P7-3 Removing someone.** `player-two-hub remove NAME` drops their token, takes them out of every channel and off `GET /people`, and closes their stream. Their messages stay until retention takes them.
 - [ ] **P7-4 No modes.**
   - A teammate's request runs once its owner approves it, and your own tag runs at once. Either may do anything the owner's user can.
   - The mode buttons, the mode switch under the message box, handing over the steps, prompt cards and their notifications go, with `run.prompt`, `run.answer`, and `mode` and `steps_by` in `run.accepted`.

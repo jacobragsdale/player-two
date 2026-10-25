@@ -73,6 +73,7 @@ pub fn router(state: AppState) -> Router {
         .route("/people", get(people))
         .route("/admin/join-code", post(admin_join_code))
         .route("/admin/reset", post(admin_reset))
+        .route("/admin/remove", post(admin_remove))
         .with_state(state)
 }
 
@@ -212,14 +213,15 @@ async fn join(
     let digest = digest(&token);
     let now = state.clock.now();
     let name = request.name;
-    // A name whose token was dropped by `reset` may be joined again; any other is taken.
+    // A name whose token was dropped by `reset` or `remove` may be joined again; any other is
+    // taken. Joining again brings back someone removed.
     let changed = state
         .db
         .lock()
         .await
         .execute(
             "INSERT INTO people (name, token_sha256, joined) VALUES ($1, $2, $3)
-             ON CONFLICT (name) DO UPDATE SET token_sha256 = excluded.token_sha256
+             ON CONFLICT (name) DO UPDATE SET token_sha256 = excluded.token_sha256, removed = false
              WHERE people.token_sha256 IS NULL",
             &[&name.as_str(), &digest, &now],
         )
@@ -457,6 +459,24 @@ async fn admin_reset(
             "nobody of that name has joined",
         ));
     }
+    state.streams.close(&name);
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// `POST /admin/remove`.
+async fn admin_remove(
+    State(state): State<AppState>,
+    _: Admin,
+    Input(request): Input<ResetRequest>,
+) -> Reply<StatusCode> {
+    let name = request.name;
+    if !store::remove(&mut *state.db.lock().await, &name).await? {
+        return Err(Refusal::new(
+            StatusCode::NOT_FOUND,
+            "nobody of that name has joined",
+        ));
+    }
+    // Everyone else's desk finds them gone the next time it fetches the people.
     state.streams.close(&name);
     Ok(StatusCode::NO_CONTENT)
 }

@@ -259,6 +259,26 @@ pub async fn events_after(
     Ok(events)
 }
 
+/// Drops someone's token, takes them out of every channel, and hides them from the people
+/// list, keeping what they wrote. False when nobody of that name has joined.
+pub async fn remove(client: &mut Client, name: &PersonName) -> anyhow::Result<bool> {
+    let transaction = client.transaction().await?;
+    let changed = transaction
+        .execute(
+            "UPDATE people SET token_sha256 = NULL, removed = true WHERE name = $1",
+            &[&name.as_str()],
+        )
+        .await?;
+    transaction
+        .execute("DELETE FROM members WHERE name = $1", &[&name.as_str()])
+        .await?;
+    transaction
+        .execute("DELETE FROM places WHERE owner = $1", &[&name.as_str()])
+        .await?;
+    transaction.commit().await?;
+    Ok(changed == 1)
+}
+
 /// Replaces the places `owner` advertises.
 pub async fn set_places(
     client: &mut Client,
@@ -288,7 +308,8 @@ pub async fn set_places(
 /// One person as the database knows them: name, when last seen, and their places.
 pub type PersonRow = (PersonName, Option<i64>, Vec<PlaceInfo>);
 
-/// Everyone who has joined, by name, with when they were last seen and the places they advertise.
+/// Everyone who has joined and was not removed, by name, with when they were last seen and the
+/// places they advertise.
 pub async fn people(client: &impl GenericClient) -> anyhow::Result<Vec<PersonRow>> {
     let mut places: HashMap<String, Vec<PlaceInfo>> = HashMap::new();
     let rows = client
@@ -308,7 +329,10 @@ pub async fn people(client: &impl GenericClient) -> anyhow::Result<Vec<PersonRow
         });
     }
     let rows = client
-        .query("SELECT name, last_seen FROM people ORDER BY name", &[])
+        .query(
+            "SELECT name, last_seen FROM people WHERE NOT removed ORDER BY name",
+            &[],
+        )
         .await?;
     let mut people = Vec::new();
     for row in rows {

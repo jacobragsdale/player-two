@@ -36,6 +36,7 @@ Everything is JSON. Requests made as a person carry `Authorization: Bearer <pers
 | `GET /stream` | person | Server-sent events (see below). |
 | `POST /admin/join-code` | admin | `{ code }`. |
 | `POST /admin/reset` | admin | `{ name }` drops that person's token so they can join again under the same name. It keeps their chats and closes their open stream. |
+| `POST /admin/remove` | admin | `{ name }` drops that person's token, takes them out of every channel and off `GET /people`, and closes their open stream. What they wrote stays. Joining again under the name brings them back. |
 
 A channel's events go to its members, and a direct chat's to its two people. Nobody else can read them.
 
@@ -109,7 +110,7 @@ The hub keeps its data in a Postgres database of its own, at `PLAYER_TWO_DATABAS
 
 | Table | Columns |
 |---|---|
-| `people` | `name` (key), `token_sha256`, `joined`, `last_seen` |
+| `people` | `name` (key), `token_sha256`, `joined`, `last_seen`, `removed` |
 | `channels` | `name` (key), `created_by`, `created` |
 | `members` | `channel`, `name` |
 | `events` | `id` (key, an identity), `chat`, `thread`, `author`, `kind`, `body` (JSON), `ts` |
@@ -131,4 +132,4 @@ Every night at 03:00 UTC, the hub deletes each thread whose newest event is olde
 | `PLAYER_TWO_RELEASE` | `/app/release` | The folder holding `player-two-setup.exe` and `player-two-setup.exe.sig`. |
 | `PLAYER_TWO_PORT` | `8787` | Where the hub listens, and where the admin commands look for it. |
 
-`player-two-hub serve` runs the hub. `player-two-hub join-code` and `player-two-hub reset NAME` call the running hub at `http://127.0.0.1:<PLAYER_TWO_PORT>` with `PLAYER_TWO_ADMIN_TOKEN`. In the cluster you run them as `kubectl exec deploy/player-two -- player-two-hub join-code`.
+`player-two-hub serve` runs the hub. `player-two-hub join-code`, `player-two-hub reset NAME` and `player-two-hub remove NAME` call the running hub at `http://127.0.0.1:<PLAYER_TWO_PORT>` with `PLAYER_TWO_ADMIN_TOKEN`. In the cluster you run them as `kubectl exec deploy/player-two -- player-two-hub join-code`.

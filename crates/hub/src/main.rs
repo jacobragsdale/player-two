@@ -26,6 +26,7 @@ const USAGE: &str = "usage:
   player-two-hub [serve]        run the hub
   player-two-hub join-code      print a join code for the running hub
   player-two-hub reset NAME     let NAME join again, for example from a new machine
+  player-two-hub remove NAME    take NAME off the hub, out of every channel, keeping what they wrote
   player-two-hub --version";
 
 #[tokio::main]
@@ -47,6 +48,12 @@ async fn main() -> anyhow::Result<()> {
             let name = PersonName::new(*name)?;
             admin::<serde_json::Value>("reset", &ResetRequest { name: name.clone() }).await?;
             println!("{name} can join again with a join code.");
+            Ok(())
+        }
+        ["remove", name] => {
+            let name = PersonName::new(*name)?;
+            admin::<serde_json::Value>("remove", &ResetRequest { name: name.clone() }).await?;
+            println!("{name} is removed: out of every channel and off the people list.");
             Ok(())
         }
         ["--version"] => {

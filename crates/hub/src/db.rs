@@ -10,7 +10,8 @@ use tokio_postgres::{Client, Config, NoTls};
 
 /// Each entry brings the schema from the version before it to its own; the first starts from an
 /// empty database. The one row of `schema_version` holds how many have been applied.
-const MIGRATIONS: &[&str] = &["
+const MIGRATIONS: &[&str] = &[
+    "
     CREATE TABLE people (
         name TEXT PRIMARY KEY,
         token_sha256 TEXT,
@@ -44,7 +45,11 @@ const MIGRATIONS: &[&str] = &["
         kind TEXT NOT NULL,
         PRIMARY KEY (owner, name)
     );
-"];
+",
+    "
+    ALTER TABLE people ADD COLUMN removed BOOLEAN NOT NULL DEFAULT false;
+",
+];
 
 /// The database, shared by every request. One connection, used by one request at a time.
 #[derive(Clone)]

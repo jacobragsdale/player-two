@@ -118,10 +118,10 @@ pub struct JoinCodeReply {
     pub code: String,
 }
 
-/// `POST /admin/reset`.
+/// `POST /admin/reset` and `POST /admin/remove`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResetRequest {
-    /// The person to let join again.
+    /// The person to let join again, or to remove.
     pub name: PersonName,
 }
 
