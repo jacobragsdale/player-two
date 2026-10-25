@@ -391,12 +391,19 @@ pub struct Item {
     /// The runs that answer it.
     pub runs: Vec<RunView>,
     /// The tags of it nobody has answered yet: not run, declined or taken back.
-    pub waiting: Vec<Tag>,
-    /// For a follow-up nobody has answered yet, the run it follows: its owner decides whether it
-    /// runs, with that run's settings.
-    pub follows: Option<RunView>,
+    pub waiting: Vec<Waiting>,
     /// Lines for the `@` mentions in it that name nobody, or a place not shared.
     pub unknown: Vec<String>,
+}
+
+/// A tag of a message that nobody has answered yet.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Type)]
+pub struct Waiting {
+    /// The place tagged.
+    pub tag: Tag,
+    /// For a follow-up, the run of that place earlier in the thread, whose session it goes to:
+    /// its owner decides whether it runs, starting from that run's settings.
+    pub follows: Option<RunView>,
 }
 
 /// How a run stands.

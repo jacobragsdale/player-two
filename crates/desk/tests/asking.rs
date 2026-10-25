@@ -1,6 +1,7 @@
 //! The help-with-my-machine scenario: Jacob asks Alice's machine for help, Alice approves once
-//! and the agent asks nobody after, a follow-up runs under keep going, Alice stops, a later
-//! follow-up waits for her, and Carol, in the chat, sees it all.
+//! and the agent asks nobody after, a comment runs nothing, a tagged follow-up runs under keep
+//! going, Carol's tag goes to the same session once Alice lets it, Alice stops, and a later
+//! follow-up waits for her.
 
 mod common;
 
@@ -110,7 +111,7 @@ async fn jacob_helps_alice_fix_her_proxy() {
         item.waiting.len() == 1
     })
     .await;
-    assert_eq!(request.waiting[0].person.as_str(), "alice");
+    assert_eq!(request.waiting[0].tag.person.as_str(), "alice");
     let Ok(Response::Approval {
         choices,
         runs_in,
@@ -153,73 +154,98 @@ async fn jacob_helps_alice_fix_her_proxy() {
         "carol neither owns nor asked for it"
     );
 
-    // A follow-up in the thread runs at once, in the same session, under keep going.
+    // A comment in the thread reaches no agent.
     let thread = Some(run.thread.0);
-    send(&jacob, "now read it again", thread).await;
-    let again = until(
-        &carol,
-        thread,
-        "now read it again",
-        "the follow-up to run",
-        |item| {
-            item.runs
-                .first()
-                .is_some_and(|run| run.state == RunState::Done)
-        },
-    )
-    .await;
-    assert_eq!(again.runs[0].result.as_deref(), Some("Did: read pip.conf."));
+    send(&jacob, "thanks!", thread).await;
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let comment = until(&alice, thread, "thanks!", "the comment", |_| true).await;
+    assert!(comment.runs.is_empty() && comment.waiting.is_empty());
 
-    // Alice stops the next one, which ends keeping going.
-    send(&jacob, "and be slow about it", thread).await;
-    let slow = until(
-        &alice,
-        thread,
-        "and be slow about it",
-        "the slow follow-up",
-        |item| {
-            item.runs
-                .first()
-                .is_some_and(|run| run.state == RunState::Working)
-        },
-    )
+    // A follow-up tags the place again, and runs at once in the same session, under keep going.
+    let again = "@alice now echo and read it again";
+    send(&jacob, again, thread).await;
+    let ran = until(&carol, thread, again, "the follow-up to run", |item| {
+        item.runs
+            .first()
+            .is_some_and(|run| run.state == RunState::Done)
+    })
+    .await;
+    let answer = ran.runs[0].result.clone().unwrap_or_default();
+    assert!(answer.starts_with("Did: read pip.conf."), "{answer}");
+    assert!(
+        !answer.contains("Earlier in this conversation"),
+        "the kept session needs no retelling"
+    );
+
+    // Carol's tag of the place goes to the same session, but only once Alice lets it.
+    let hers = "@alice read it for me too";
+    send(&carol, hers, thread).await;
+    let asked = until(&alice, thread, hers, "carol's tag to wait", |item| {
+        item.waiting.len() == 1
+    })
+    .await;
+    assert!(
+        asked.waiting[0].follows.is_some(),
+        "alice sees it follows the run"
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    assert!(
+        until(&alice, thread, hers, "it to keep waiting", |_| true)
+            .await
+            .runs
+            .is_empty(),
+        "keep going was for jacob, not carol"
+    );
+    assert_eq!(
+        alice.handle(approve(&asked, false)).await,
+        Ok(Response::Done)
+    );
+    let ran = until(&carol, thread, hers, "carol's run", |item| {
+        item.runs
+            .first()
+            .is_some_and(|run| run.state == RunState::Done)
+    })
+    .await;
+    assert_eq!(ran.runs[0].result.as_deref(), Some("Did: read pip.conf."));
+
+    // Jacob still keeps going; Alice stops his next one, which ends it.
+    let slow = "@alice and be slow about it";
+    send(&jacob, slow, thread).await;
+    let working = until(&alice, thread, slow, "the slow follow-up", |item| {
+        item.runs
+            .first()
+            .is_some_and(|run| run.state == RunState::Working)
+    })
     .await;
     assert_eq!(
         alice
             .handle(Request::Stop {
                 chat: id(CHAT),
-                thread: slow.runs[0].thread,
-                run: slow.runs[0].id
+                thread: working.runs[0].thread,
+                run: working.runs[0].id
             })
             .await,
         Ok(Response::Done)
     );
-    until(&jacob, thread, "and be slow about it", "the stop", |item| {
+    until(&jacob, thread, slow, "the stop", |item| {
         item.runs[0].state == RunState::Stopped
     })
     .await;
 
     // So the next follow-up waits for her, and she sees it as hers to decide.
-    send(&jacob, "read it once more", thread).await;
-    let waiting = until(
-        &alice,
-        thread,
-        "read it once more",
-        "the follow-up to wait",
-        |item| item.follows.is_some(),
-    )
+    let more = "@alice read it once more";
+    send(&jacob, more, thread).await;
+    let waiting = until(&alice, thread, more, "the follow-up to wait", |item| {
+        item.waiting.len() == 1
+    })
     .await;
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    let still = until(
-        &alice,
-        thread,
-        "read it once more",
-        "it to keep waiting",
-        |_| true,
-    )
-    .await;
+    let still = until(&alice, thread, more, "it to keep waiting", |_| true).await;
     assert!(still.runs.is_empty(), "nothing ran without alice");
-    let follows = waiting.follows.expect("it follows a run");
+    let follows = waiting.waiting[0]
+        .follows
+        .clone()
+        .expect("it follows a run");
     assert_eq!(
         (follows.owner.as_str(), follows.place.as_str()),
         ("alice", "machine")
@@ -346,4 +372,59 @@ async fn the_asker_can_stop_a_run_but_nobody_else() {
     })
     .await;
     assert_eq!(stopped.runs[0].reason.as_deref(), Some("jacob stopped it"));
+}
+
+#[tokio::test]
+async fn a_follow_up_sent_to_another_system_starts_afresh_there() {
+    let hub = Hub::start().await;
+    let (alice, jacob, _carol) = three(&hub).await;
+    let ask = "@alice read the settings";
+    send(&jacob, ask, None).await;
+    let request = until(&alice, None, ask, "the request", |item| {
+        item.waiting.len() == 1
+    })
+    .await;
+    assert_eq!(
+        alice.handle(approve(&request, false)).await,
+        Ok(Response::Done)
+    );
+    until(&alice, None, ask, "the run to finish", |item| {
+        item.runs
+            .first()
+            .is_some_and(|run| run.state == RunState::Done)
+    })
+    .await;
+
+    // Alice sends the follow-up to a WSL distro, which has no agent here: the session kept on
+    // Windows is not used for it.
+    let thread = Some(request.id.0);
+    let more = "@alice read it again";
+    send(&jacob, more, thread).await;
+    let asked = until(&alice, thread, more, "the follow-up", |item| {
+        item.waiting.len() == 1
+    })
+    .await;
+    let elsewhere = Request::Approve {
+        chat: id(CHAT),
+        request: asked.id,
+        place: PlaceName::machine(),
+        runs_in: RunsIn::Wsl("Ubuntu".to_owned()),
+        keep_going: false,
+    };
+    assert_eq!(alice.handle(elsewhere).await, Ok(Response::Done));
+    let failed = until(&jacob, thread, more, "the follow-up to end", |item| {
+        item.runs
+            .first()
+            .is_some_and(|run| run.state != RunState::Working)
+    })
+    .await;
+    assert_eq!(failed.runs[0].state, RunState::Failed);
+    assert!(
+        failed.runs[0]
+            .reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("Ubuntu")),
+        "{:?}",
+        failed.runs[0].reason
+    );
 }

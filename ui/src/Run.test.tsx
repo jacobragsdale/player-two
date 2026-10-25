@@ -4,18 +4,18 @@ import { expect, test } from "vitest";
 import type { RunView } from "./desk.ts";
 import { Run, Waiting } from "./Run.tsx";
 
-const mine = [{ person: "alice", place: "machine" }];
+const mine = [{ tag: { person: "alice", place: "machine" }, follows: null }];
 
 test("a tag of your own that found its place busy waits, then offers Run now", () => {
-  const busy = renderToStaticMarkup(<Waiting tags={mine} me="alice" author="alice" chat="#ops" request={1} busy={["machine"]} />);
+  const busy = renderToStaticMarkup(<Waiting waiting={mine} me="alice" author="alice" chat="#ops" request={1} busy={["machine"]} />);
   expect(busy).toContain("your computer is busy");
   expect(busy).not.toContain("Run now");
-  const free = renderToStaticMarkup(<Waiting tags={mine} me="alice" author="alice" chat="#ops" request={1} busy={[]} />);
+  const free = renderToStaticMarkup(<Waiting waiting={mine} me="alice" author="alice" chat="#ops" request={1} busy={[]} />);
   expect(free).toContain("Run now");
 });
 
 test("a teammate's tag waits for them, and its asker may withdraw it", () => {
-  const page = renderToStaticMarkup(<Waiting tags={[{ person: "bob", place: "uploader" }]} me="alice" author="alice" chat="#ops" request={1} busy={[]} />);
+  const page = renderToStaticMarkup(<Waiting waiting={[{ tag: { person: "bob", place: "uploader" }, follows: null }]} me="alice" author="alice" chat="#ops" request={1} busy={[]} />);
   expect(page).toContain("waiting for bob to approve");
   expect(page).toContain("Withdraw");
 });

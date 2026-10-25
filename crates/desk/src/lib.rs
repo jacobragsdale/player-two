@@ -525,37 +525,37 @@ impl Desk {
         })
     }
 
-    /// Runs a follow-up at once when the person let its asker keep going and the thread's
-    /// session is still kept.
+    /// Runs a teammate's tag of the person's place at once when it is in a thread where the
+    /// place's session is kept and the person let its author keep going there.
     async fn keep_going(&self, event: &Event) {
         let Some(me) = self.me() else {
             return;
         };
-        let followed = self
-            .state()
-            .chats
-            .as_ref()
-            .and_then(|chats| chats.followed(event));
-        let Some(run) = followed.filter(|run| run.owner == me && run.state == ui::RunState::Done)
-        else {
+        let (Body::Message(message), Some(thread)) = (&event.body, event.thread) else {
             return;
         };
-        if !self.keeps_going(run.thread, &run.place) || self.busy(&run.place) {
+        if event.author == me {
+            // The person's own tags run at once as they send them.
             return;
         }
-        let Body::Message(message) = &event.body else {
-            return;
-        };
-        let order = runs::Order {
-            request: event.clone(),
-            asker: event.author.clone(),
-            text: message.text.clone(),
-            place: run.place.clone(),
-            runs_in: run.runs_in.clone(),
-            keep_going: true,
-        };
-        if let Err(error) = self.start_run(order).await {
-            eprintln!("error: cannot run a follow-up: {error:#}");
+        for tag in message.tags.iter().filter(|tag| tag.person == me) {
+            let Some(runs_in) = self.keeps_going(thread, &tag.place, &event.author) else {
+                continue;
+            };
+            if self.busy(&tag.place) {
+                continue;
+            }
+            let order = runs::Order {
+                request: event.clone(),
+                asker: event.author.clone(),
+                text: message.text.clone(),
+                place: tag.place.clone(),
+                runs_in,
+                keep_going: true,
+            };
+            if let Err(error) = self.start_run(order).await {
+                eprintln!("error: cannot run a follow-up: {error:#}");
+            }
         }
     }
 
@@ -692,26 +692,7 @@ impl Desk {
             ts: 0,
             body,
         };
-        // A follow-up of the person's own run goes to their agent at once, as their tag would.
-        let own_follow_up = self
-            .state()
-            .chats
-            .as_ref()
-            .and_then(|chats| chats.followed(&request))
-            .filter(|run| run.owner == me && run.state != ui::RunState::Working);
-        if let Some(run) = own_follow_up
-            && !self.busy(&run.place)
-        {
-            self.start_run(runs::Order {
-                request: request.clone(),
-                asker: me.clone(),
-                text: text.clone(),
-                place: run.place,
-                runs_in: run.runs_in,
-                keep_going: false,
-            })
-            .await?;
-        }
+        // Only a tag reaches an agent: a reply in a thread without one is a comment.
         for tag in tags.into_iter().filter(|tag| tag.person == me) {
             if self.busy(&tag.place) {
                 // It waits, as a teammate's request would, until the place is free.
@@ -977,6 +958,7 @@ impl Desk {
                         let chat = event.chat.clone();
                         self.asked_to_stop(&event);
                         let follow_up = event.clone();
+                        let (thread, author) = (event.thread, event.author.clone());
                         let notice = self.state().chats.as_mut().and_then(|chats| {
                             let notice = chats.notice(&event);
                             chats.apply(event);
@@ -985,9 +967,11 @@ impl Desk {
                         self.tell(ui::Event::Chat { chat: chat.clone() });
                         self.tell(ui::Event::Overview);
                         // A follow-up that keep going runs at once has nothing to click.
-                        let runs_by_itself = notice.as_ref().and_then(|notice| notice.follows.as_ref()).is_some_and(
-                            |(thread, place)| self.keeps_going(*thread, place) && !self.busy(place),
-                        );
+                        let runs_by_itself = notice.as_ref().zip(thread).is_some_and(|(notice, thread)| {
+                            notice.follows.iter().any(|place| {
+                                self.keeps_going(thread, place, &author).is_some() && !self.busy(place)
+                            })
+                        });
                         if let Some(notice) = notice.filter(|_| !runs_by_itself) {
                             self.tell(ui::Event::Notify {
                                 chat,

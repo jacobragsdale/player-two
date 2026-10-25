@@ -46,13 +46,20 @@ export function Message({ item, me, chat, onThread, busy }: Props): JSX.Element 
       {item.runs.map((run) => (
         <Run key={run.id} run={run} chat={chat} me={me} />
       ))}
-      <Waiting tags={item.waiting} me={me} author={item.author} chat={chat} request={item.id} busy={busy} />
+      <Waiting waiting={item.waiting} me={me} author={item.author} chat={chat} request={item.id} busy={busy} />
       {item.author !== me &&
-        item.waiting.filter((tag) => tag.person === me).map((tag) => <Approval key={tag.place} chat={chat} request={item.id} place={tag.place} asker={item.author} follows={null} />)}
-      {item.follows !== null && item.follows.owner === me && item.follows.state !== "working" && (
-        <Approval chat={chat} request={item.id} place={item.follows.place} asker={item.author} follows={{ keep_going: item.follows.keep_going, runs_in: item.follows.runs_in }} />
-      )}
-      {item.follows !== null && item.follows.owner !== me && item.runs.length === 0 && <p className="text-xs text-muted-foreground">◌ waiting for {item.follows.owner} to run it</p>}
+        item.waiting
+          .filter(({ tag }) => tag.person === me)
+          .map(({ tag, follows }) => (
+            <Approval
+              key={tag.place}
+              chat={chat}
+              request={item.id}
+              place={tag.place}
+              asker={item.author}
+              follows={follows === null ? null : { keep_going: follows.keep_going, runs_in: follows.runs_in }}
+            />
+          ))}
       {item.unknown.map((line) => (
         <p key={line} className="text-xs text-muted-foreground">
           ? {line}

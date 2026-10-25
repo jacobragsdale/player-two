@@ -1,7 +1,7 @@
 //! Running an agent for a request: the run's record in the chat, its session, and its reports. A
 //! run its owner let go may do anything: whatever the agent still asks about is allowed. Each
-//! place runs one thing at a time. A session that finished is kept for follow-ups in the same
-//! thread, until an hour after it last finished.
+//! place runs one thing at a time. A session that finished is kept for the next tag of its place
+//! in the same thread, until an hour after it last finished.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -23,7 +23,7 @@ use crate::mask::mask;
 const BATCH: Duration = Duration::from_millis(400);
 /// How long a stopped agent has to stop by itself before it is killed.
 const GRACE: Duration = Duration::from_secs(3);
-/// How long a session is kept for follow-ups after its thread goes quiet.
+/// How long a session is kept for follow-ups after it last finished.
 pub const QUIET: Duration = Duration::from_secs(3600);
 
 /// What a run is for.
@@ -77,14 +77,17 @@ pub(crate) struct Active {
 /// A session, with where its reports arrive and the folder it runs in.
 type Parts = (Arc<Session>, mpsc::UnboundedReceiver<Activity>, String);
 
-/// A session kept after its run, for the asker's follow-ups in the same thread.
+/// A session kept after its run, for the next tag of its place in the same thread.
 #[derive(Debug)]
 pub(crate) struct Kept {
+    thread: EventId,
     session: Arc<Session>,
     said: mpsc::UnboundedReceiver<Activity>,
     folder: String,
     place: PlaceName,
-    keep_going: bool,
+    runs_in: RunsIn,
+    /// The asker the owner let keep going here, whose follow-ups run without a click.
+    keeps: Option<PersonName>,
     last: Instant,
 }
 
@@ -93,8 +96,8 @@ pub(crate) struct Kept {
 pub(crate) struct Runs {
     /// The runs going on or starting, by the name their place had when they started.
     pub(crate) active: HashMap<PlaceName, Active>,
-    /// Sessions kept for follow-ups, by the thread they serve.
-    kept: HashMap<EventId, Kept>,
+    /// Sessions kept for follow-ups: one for each thread and place.
+    kept: Vec<Kept>,
 }
 
 /// Where a run reports: its chat, its thread and its id.
@@ -143,8 +146,9 @@ impl Desk {
     }
 
     /// Starts a run for a request, unless its place is busy. A run that cannot start ends at once,
-    /// saying why, so that the chat sees it. A follow-up in a thread whose session is kept goes
-    /// to that session; otherwise a new one is given the thread so far.
+    /// saying why, so that the chat sees it. A tag of a place in a thread where its session is
+    /// kept goes to that session, whoever wrote it; otherwise a new one is given what ran there
+    /// so far.
     pub(crate) async fn start_run(&self, order: Order) -> anyhow::Result<()> {
         let settings = self.settings()?;
         let place = settings.current(&order.place);
@@ -187,20 +191,35 @@ impl Desk {
         }
         self.tell(crate::ui::Event::Overview);
         let report = Report { chat, thread, run };
-        let kept = self
-            .runs()
-            .kept
-            .remove(&thread)
-            .filter(|kept| settings.current(&kept.place) == place);
+        let me = self.me().unwrap_or_else(|| order.asker.clone());
+        let (kept, elsewhere) = {
+            let mut runs = self.runs();
+            let at = runs
+                .kept
+                .iter()
+                .position(|kept| kept.thread == thread && settings.current(&kept.place) == place);
+            match at.map(|at| runs.kept.remove(at)) {
+                Some(kept) if kept.runs_in == order.runs_in => (Some(kept), None),
+                other => (None, other),
+            }
+        };
+        // A session kept on another system is no use to a run on this one.
+        if let Some(elsewhere) = elsewhere {
+            let _ = elsewhere.session.stop().await;
+        }
+        let keeps = kept.as_ref().and_then(|kept| kept.keeps.clone());
         let (parts, earlier) = match kept {
             Some(kept) => ((kept.session, kept.said, kept.folder), String::new()),
             None => match self.open_session(&order).await {
                 Ok(parts) => {
+                    let ran_here = |ran: &PlaceName| settings.current(ran) == place;
                     let earlier = self
                         .state()
                         .chats
                         .as_ref()
-                        .map(|chats| chats.transcript(&report.chat, thread, order.request.id))
+                        .map(|chats| {
+                            chats.transcript(&report.chat, thread, &me, ran_here, order.request.id)
+                        })
                         .unwrap_or_default();
                     (parts, earlier)
                 }
@@ -230,14 +249,13 @@ impl Desk {
                 .await;
             return Ok(());
         }
-        let me = self.me().unwrap_or_else(|| order.asker.clone());
         let text = format!(
             "{}{earlier}{}",
             preamble(&me, &order.asker, &order.runs_in, &parts.2),
             order.text
         );
         let desk = self.clone();
-        tokio::spawn(async move { desk.drive(order, report, parts, text).await });
+        tokio::spawn(async move { desk.drive(order, report, parts, text, keeps).await });
         Ok(())
     }
 
@@ -272,13 +290,15 @@ impl Desk {
     }
 
     /// Runs one turn, reporting as it goes, and ends the run. A run that finished keeps its
-    /// session for follow-ups; one that was stopped or failed stops it.
+    /// session for follow-ups, with whoever may keep going there: this run's asker when the
+    /// owner let them, or else whoever could before. One that was stopped or failed stops it.
     async fn drive(
         self,
         order: Order,
         report: Report,
         (session, mut said, folder): Parts,
         text: String,
+        keeps: Option<PersonName>,
     ) {
         let turning = Arc::clone(&session);
         let mut turn = tokio::spawn(async move { turning.turn(text).await });
@@ -325,14 +345,20 @@ impl Desk {
         self.forget_run(report.run);
         if how == Ending::Done {
             let kept = Kept {
+                thread: report.thread,
                 session,
                 said,
                 folder,
                 place: order.place.clone(),
-                keep_going: order.keep_going,
+                runs_in: order.runs_in.clone(),
+                keeps: if order.keep_going {
+                    Some(order.asker.clone())
+                } else {
+                    keeps
+                },
                 last: Instant::now(),
             };
-            self.runs().kept.insert(report.thread, kept);
+            self.runs().kept.push(kept);
         } else {
             let _ = session.stop().await;
         }
@@ -422,30 +448,38 @@ impl Desk {
         }
     }
 
-    /// Whether a follow-up in `thread` at `place` may run without a click: its session is kept,
-    /// the owner let the asker keep going, and the thread has not been quiet for an hour.
-    pub(crate) fn keeps_going(&self, thread: EventId, place: &PlaceName) -> bool {
+    /// Where `asker`'s tag of `place` in `thread` runs without a click, if it may: its session is
+    /// kept, the owner let them keep going, and the agent last finished there less than an hour
+    /// ago.
+    pub(crate) fn keeps_going(
+        &self,
+        thread: EventId,
+        place: &PlaceName,
+        asker: &PersonName,
+    ) -> Option<RunsIn> {
         let settings = self.settings().unwrap_or_default();
         let place = settings.current(place);
-        self.runs().kept.get(&thread).is_some_and(|kept| {
-            settings.current(&kept.place) == place && kept.keep_going && kept.last.elapsed() < QUIET
-        })
+        self.runs()
+            .kept
+            .iter()
+            .find(|kept| {
+                kept.thread == thread
+                    && settings.current(&kept.place) == place
+                    && kept.keeps.as_ref() == Some(asker)
+                    && kept.last.elapsed() < QUIET
+            })
+            .map(|kept| kept.runs_in.clone())
     }
 
-    /// Stops the sessions kept for threads quiet for an hour.
+    /// Stops the sessions kept an hour after they last finished.
     pub(crate) async fn forget_quiet(&self) {
         let quiet: Vec<Kept> = {
             let mut runs = self.runs();
-            let threads: Vec<EventId> = runs
-                .kept
-                .iter()
-                .filter(|(_, kept)| kept.last.elapsed() >= QUIET)
-                .map(|(thread, _)| *thread)
-                .collect();
-            threads
-                .iter()
-                .filter_map(|thread| runs.kept.remove(thread))
-                .collect()
+            let (quiet, fresh) = std::mem::take(&mut runs.kept)
+                .into_iter()
+                .partition(|kept| kept.last.elapsed() >= QUIET);
+            runs.kept = fresh;
+            quiet
         };
         for kept in quiet {
             let _ = kept.session.stop().await;

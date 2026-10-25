@@ -139,7 +139,7 @@ async fn a_busy_place_leaves_the_next_tag_waiting_and_stop_stops_it() {
 }
 
 #[tokio::test]
-async fn a_follow_up_of_your_own_run_runs_at_once() {
+async fn a_tag_in_the_thread_of_your_own_run_runs_at_once_and_a_comment_runs_nothing() {
     let hub = Hub::start().await;
     let desk = alice(&hub).await;
     send(&desk, "@alice read it").await;
@@ -149,20 +149,27 @@ async fn a_follow_up_of_your_own_run_runs_at_once() {
             .is_some_and(|run| run.state == RunState::Done)
     })
     .await;
-    let sent = desk
-        .handle(Request::Send {
-            chat: id(CHAT),
-            thread: Some(first.id),
-            text: "now run it".to_owned(),
-        })
-        .await;
-    assert_eq!(sent, Ok(Response::Done));
+    for text in ["looks right, thanks", "@alice now run it"] {
+        let sent = desk
+            .handle(Request::Send {
+                chat: id(CHAT),
+                thread: Some(first.id),
+                text: text.to_owned(),
+            })
+            .await;
+        assert_eq!(sent, Ok(Response::Done));
+    }
     for _ in 0..500 {
         let view = chat(&desk, CHAT, Some(first.id)).await;
+        let comment = view
+            .items
+            .iter()
+            .find(|item| item.text == "looks right, thanks");
+        assert!(comment.is_some_and(|item| item.runs.is_empty()));
         if let Some(run) = view
             .items
             .iter()
-            .find(|item| item.text == "now run it")
+            .find(|item| item.text == "@alice now run it")
             .and_then(|item| item.runs.first())
             && run.state == RunState::Done
         {

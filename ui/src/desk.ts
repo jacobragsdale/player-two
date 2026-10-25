@@ -150,12 +150,7 @@ export type Item = {
 	/**  The runs that answer it. */
 	runs: RunView[],
 	/**  The tags of it nobody has answered yet: not run, declined or taken back. */
-	waiting: Tag[],
-	/**
-	 *  For a follow-up nobody has answered yet, the run it follows: its owner decides whether it
-	 *  runs, with that run's settings.
-	 */
-	follows: RunView | null,
+	waiting: Waiting[],
 	/**  Lines for the `@` mentions in it that name nobody, or a place not shared. */
 	unknown: string[],
 };
@@ -484,4 +479,15 @@ export type Tag = {
 	person: PersonName,
 	/**  Which place: `machine` for `@person`. */
 	place: PlaceName,
+};
+
+/**  A tag of a message that nobody has answered yet. */
+export type Waiting = {
+	/**  The place tagged. */
+	tag: Tag,
+	/**
+	 *  For a follow-up, the run of that place earlier in the thread, whose session it goes to:
+	 *  its owner decides whether it runs, starting from that run's settings.
+	 */
+	follows: RunView | null,
 };

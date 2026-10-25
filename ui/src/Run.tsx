@@ -6,7 +6,7 @@ import type { JSX } from "react";
 
 import { Button } from "@/components/ui/button";
 
-import type { Activity, ChatId, RunView, Tag } from "./desk.ts";
+import type { Activity, ChatId, RunView, Tag, Waiting as WaitingTag } from "./desk.ts";
 import { ask, problem } from "./deskClient.ts";
 import { Markdown } from "./Markdown.tsx";
 
@@ -158,7 +158,7 @@ function Busy({ tag, chat, request, busy }: { readonly tag: Tag; readonly chat: 
 }
 
 interface WaitingProps {
-  readonly tags: readonly Tag[];
+  readonly waiting: readonly WaitingTag[];
   readonly me: string;
   readonly author: string;
   readonly chat: ChatId;
@@ -168,9 +168,9 @@ interface WaitingProps {
 }
 
 /** A line for each tag nobody has answered yet, with Withdraw for whoever asked, and Run now for a tag of the person's own that found its place busy. */
-export function Waiting({ tags, me, author, chat, request, busy }: WaitingProps): JSX.Element | null {
+export function Waiting({ waiting, me, author, chat, request, busy }: WaitingProps): JSX.Element | null {
   const [error, setError] = useState("");
-  if (tags.length === 0) {
+  if (waiting.length === 0) {
     return null;
   }
   const withdraw = (): void => {
@@ -180,12 +180,14 @@ export function Waiting({ tags, me, author, chat, request, busy }: WaitingProps)
   };
   return (
     <>
-      {tags.map((tag) =>
+      {waiting.map(({ tag, follows }) =>
         tag.person === me && author === me ? (
           <Busy key={`${tag.person}/${tag.place}`} tag={tag} chat={chat} request={request} busy={busy.includes(tag.place)} />
         ) : (
           <p key={`${tag.person}/${tag.place}`} className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span>◌ waiting for {tag.person === me ? "you" : tag.person} to approve</span>
+            <span>
+              ◌ waiting for {tag.person === me ? "you" : tag.person} to {follows === null ? "approve" : "run it"}
+            </span>
             {author === me && (
               <Button type="button" variant="ghost" size="xs" onClick={withdraw}>
                 Withdraw

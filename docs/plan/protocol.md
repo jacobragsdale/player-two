@@ -55,8 +55,8 @@ Every event has the same envelope: `{ id, chat, thread, author, kind, body, ts }
 | `kind` | `body` | Who may post it |
 |---|---|---|
 | `message` | `{ text, tags: [{ person, place }] }`. `text` is at most 64,000 characters. | Anyone in the chat. |
-| `run.accepted` | `{ request, place, runs_in, keep_going }`. `request` is the message being answered. | The owner of the tagged place, or for a follow-up, the owner of the run it follows. |
-| `run.declined` | `{ request }` | The owner of the tagged place, or for a follow-up, the owner of the run it follows. |
+| `run.accepted` | `{ request, place, runs_in, keep_going }`. `request` is the message being answered. | The owner of the tagged place. |
+| `run.declined` | `{ request }` | The owner of the tagged place. |
 | `run.withdrawn` | `{ request }` | Whoever wrote the request. |
 | `run.activity` | `{ run, items: [{ id, verb, object, outcome?, output? }] }`. `run` is the `id` of its `run.accepted`. | The owner. |
 | `run.result` | `{ run, text }`: the agent's answer, as Markdown. | The owner. |
@@ -66,7 +66,9 @@ Every event has the same envelope: `{ id, chat, thread, author, kind, body, ts }
 Rules every desk keeps, as well as the hub:
 
 - **Only the sender's desk resolves tags,** and only in a `message` that a person typed. Nobody looks for tags in an agent's output.
-- **A follow-up is a `message` in a request's thread,** written by the original asker. It needs a new `run.accepted` from the owner. The owner's desk posts that by itself only while the thread's `keep_going` holds: until a `run.ended` with `how: "stopped"`, or until an hour passes with no event in the thread.
+- **Only a tag reaches an agent.** A `message` without tags is a comment, in any thread.
+- **A follow-up is a `message` in a request's thread that tags the place again.** It goes to that place's session in the thread, whoever wrote it, and needs a new `run.accepted` from the owner. The owner's desk posts that by itself for the asker the owner let keep going, until a `run.ended` with `how: "stopped"`, or until an hour after the agent last finished in the thread.
+- **A fresh session**, after a restart, an hour, or a move to another system, is given each request that ran at that place in the thread and the agent's answers to them, and no comment.
 - **Your own tag** sent from your window produces the same events, and runs at once.
 - **Each place has at most one active run.** A second request stays waiting, and its card says the place is busy and with whose request.
 - **Credentials are masked.** Before posting `run.activity`, `run.result` or the reason of a `run.ended`, the owner's desk replaces with `****` the password in a URL's `user:password@`, and the value after `password=`, `token=` or `Authorization:`, in any case.
