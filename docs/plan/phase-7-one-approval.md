@@ -34,7 +34,7 @@ A teammate's request waits for one click, and after it the agent asks nobody. On
 - [ ] **P7-12 Asking before stopping a run.** While a run is going at one of your places, Update and the tray's Quit ask first, naming the run they would stop.
 - [x] **P7-13 A long answer is cut.** An agent's answer longer than an event may hold is cut to fit, and says so, rather than lost.
 - [ ] **P7-14 (workstation)**
-  - With Cursor: whether `agent acp --force` stops it asking, and whether its permission options spell their `kind` `allow-once`.
+  - With Cursor: that `agent --force acp` starts and stops it asking.
   - Where Cursor's installer puts `agent` on Windows, and what `agent --version` prints.
   - With Claude Code in a WSL distro whose user is root: whether `bypassPermissions` is refused, and that the run still goes, with the desk saying yes.
   - Write each down under "Notes".

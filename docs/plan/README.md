@@ -6,7 +6,7 @@ This folder is the implementation plan. It is written for a coding agent working
 
 | File | What it is |
 |---|---|
-| [`protocol.md`](protocol.md) | Reference: names, the hub's API, the events, places and modes, the desk boundary, storage. The phase files point here instead of repeating it. |
+| [`protocol.md`](protocol.md) | Reference: names, the hub's API, the events, places and runs, the desk boundary, storage. The phase files point here instead of repeating it. |
 | [`phase-0-skeleton.md`](phase-0-skeleton.md) | Workspace, UI, Tauri shell, desk boundary, CI. |
 | [`phase-1-hub.md`](phase-1-hub.md) | The hub, end to end, with its deploy manifests. |
 | [`phase-2-chat.md`](phase-2-chat.md) | The window as a working chat. |
