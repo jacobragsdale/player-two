@@ -213,8 +213,8 @@ impl Chats {
         }
     }
 
-    /// What to notify of a message: one to the person directly, or one tagging them, which may
-    /// follow up a run of theirs and wait for their click.
+    /// What to notify of a message: one to the person directly, one tagging them, which may
+    /// follow up a run of theirs and wait for their click, or a reply in a thread they follow.
     fn message_notice(&self, event: &Event, message: &Message) -> Option<Notice> {
         if event.author == self.me {
             return None;
@@ -222,7 +222,15 @@ impl Chats {
         let direct = event.chat.is_between(&self.me);
         let tagged = message.tags.iter().any(|tag| tag.person == self.me);
         if !direct && !tagged {
-            return None;
+            let root = event
+                .thread
+                .filter(|root| self.follows(&event.chat, *root))?;
+            return Some(Notice {
+                title: format!("{} replied in {}", event.author, self.title(&event.chat)),
+                body: shortened(&message.text),
+                thread: Some(root),
+                follows: Vec::new(),
+            });
         }
         let follows: Vec<PlaceName> = self
             .followed(event)
@@ -244,6 +252,18 @@ impl Chats {
             // A direct message is worth a notification whatever runs; only a follow-up elsewhere
             // is left quiet when keep going runs it.
             follows: if direct { Vec::new() } else { follows },
+        })
+    }
+
+    /// Whether the person follows a thread: they wrote its first message or a reply in it, or
+    /// a run in it is theirs.
+    fn follows(&self, chat: &ChatId, root: EventId) -> bool {
+        self.events.get(chat).is_some_and(|events| {
+            events.values().any(|event| {
+                event.author == self.me
+                    && (event.id == root || event.thread == Some(root))
+                    && matches!(event.body, Body::Message(_) | Body::RunAccepted(_))
+            })
         })
     }
 
@@ -965,7 +985,9 @@ mod tests {
             }),
         ));
         let comment = message(4, &ops, "bob", Some(1), "thanks");
-        assert_eq!(chats.notice(&comment), None, "a comment reaches no agent");
+        let replied = chats.notice(&comment).expect("alice follows the thread");
+        assert_eq!(replied.title, "bob replied in #ops");
+        assert!(replied.follows.is_empty(), "a comment reaches no agent");
         let mut follow_up = message(5, &ops, "bob", Some(1), "@alice and the other one");
         if let Body::Message(text) = &mut follow_up.body {
             text.tags.push(player_two_core::event::Tag {
@@ -976,6 +998,41 @@ mod tests {
         let notice = chats.notice(&follow_up).expect("alice decides it");
         assert_eq!(notice.title, "bob follows up in #ops");
         assert_eq!(notice.follows, [PlaceName::machine()]);
+    }
+
+    #[test]
+    fn a_reply_in_a_thread_notifies_whoever_follows_it() {
+        // Bob asked in #ops, and alice's agent ran it: both follow the thread.
+        let (mut chats, ops) = a_run();
+        let comment = message(3, &ops, "carol", Some(1), "nice");
+        let notice = chats.notice(&comment).expect("alice's run is in it");
+        assert_eq!(
+            (notice.title.as_str(), notice.thread),
+            ("carol replied in #ops", Some(EventId(1)))
+        );
+        let mut bobs = Chats::new(name("bob"), BTreeMap::new());
+        let mut daves = Chats::new(name("dave"), BTreeMap::new());
+        for id in 1..=2 {
+            let seen = chats.event(&ops, EventId(id)).expect("seen").clone();
+            bobs.apply(seen.clone());
+            daves.apply(seen);
+        }
+        assert!(
+            bobs.notice(&comment).is_some(),
+            "bob wrote its first message"
+        );
+        assert_eq!(daves.notice(&comment), None, "dave has not written in it");
+        chats.apply(comment.clone());
+        assert_eq!(
+            chats.notice(&message(4, &ops, "alice", Some(1), "thanks")),
+            None,
+            "nobody hears of their own reply"
+        );
+        assert_eq!(
+            chats.notice(&message(5, &ops, "carol", None, "elsewhere")),
+            None,
+            "a message outside the thread is not a reply in it"
+        );
     }
 
     #[test]

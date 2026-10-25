@@ -234,8 +234,8 @@ pub enum Event {
         chat: ChatId,
     },
     /// Something worth a notification arrived: a direct message, a tag of the person or their
-    /// places, a follow-up waiting for their click, or the end of a run they asked for. The app
-    /// shows it while the window is not in front.
+    /// places, a follow-up waiting for their click, a reply in a thread they follow, or the end
+    /// of a run they asked for. The app shows it while the window is not in front.
     Notify {
         /// Where.
         chat: ChatId,

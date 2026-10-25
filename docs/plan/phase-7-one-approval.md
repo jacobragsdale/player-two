@@ -29,7 +29,7 @@ A teammate's request waits for one click, and after it the agent asks nobody. On
   - A follow-up approved to run on another system starts a fresh session there, not the one kept on the first.
 - [x] **P7-8 Each tag on its own.** Every tag in a message is answered on its own: `run.declined` names the place. Withdraw takes back the whole message.
 - [x] **P7-9 Tags of people not in the channel.** A tag of someone who is not in the channel is not resolved, and the line under the message says "alice is not in #ops, so alice cannot see this".
-- [ ] **P7-10 Following a thread.** A comment in a thread notifies whoever wrote its first message, anyone who has written in it, and the owner of any run in it, but not its author.
+- [x] **P7-10 Following a thread.** A comment in a thread notifies whoever wrote its first message, anyone who has written in it, and the owner of any run in it, but not its author.
 - [ ] **P7-11 The preamble.** It says the agent may do what the request needs, and that everything it reads or prints is shown to everyone in the chat, so it must never print passwords, tokens or keys.
 - [ ] **P7-12 Asking before stopping a run.** While a run is going at one of your places, Update and the tray's Quit ask first, naming the run they would stop.
 - [ ] **P7-13 A long answer is cut.** An agent's answer longer than an event may hold is cut to fit, and says so, rather than lost.
