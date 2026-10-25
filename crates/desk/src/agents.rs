@@ -51,6 +51,21 @@ impl AgentKind {
         }
     }
 
+    /// Whether a program found by this kind's name is this kind's. Another tool may be called
+    /// `agent` too, so only one that lives in Cursor's own install folder is Cursor's: on Windows
+    /// `%LOCALAPPDATA%\cursor-agent`, and elsewhere `~/.local/share/cursor-agent`, which
+    /// `~/.local/bin/agent` links into.
+    #[must_use]
+    pub fn owns(self, program: &Path) -> bool {
+        match self {
+            Self::Cursor => std::fs::canonicalize(program)
+                .unwrap_or_else(|_| program.to_owned())
+                .components()
+                .any(|part| part.as_os_str().eq_ignore_ascii_case(CURSOR_FOLDER)),
+            Self::Copilot | Self::Claude => true,
+        }
+    }
+
     /// Its name for people.
     #[must_use]
     pub fn label(self) -> &'static str {
@@ -79,6 +94,9 @@ pub struct Found {
     pub home: String,
 }
 
+/// The folder Cursor's installer puts its agent in.
+const CURSOR_FOLDER: &str = "cursor-agent";
+
 /// The separator between a `PATH`'s folders on this system.
 const SEPARATOR: char = if cfg!(windows) { ';' } else { ':' };
 
@@ -104,6 +122,11 @@ async fn current_path() -> String {
 
 /// The file a program name stands for in a `PATH`: on Windows with each of `PATHEXT`'s endings.
 fn search(path: &str, program: &str) -> Option<PathBuf> {
+    search_for(path, program, |_| true)
+}
+
+/// The first file a program name stands for in a `PATH` that `wanted` accepts.
+fn search_for(path: &str, program: &str, wanted: impl Fn(&Path) -> bool) -> Option<PathBuf> {
     let endings: Vec<String> = if cfg!(windows) {
         std::env::var("PATHEXT")
             .unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_owned())
@@ -121,7 +144,7 @@ fn search(path: &str, program: &str) -> Option<PathBuf> {
                 .iter()
                 .map(move |ending| Path::new(folder).join(format!("{program}{ending}")))
         })
-        .find(|candidate| candidate.is_file())
+        .find(|candidate| candidate.is_file() && wanted(candidate))
 }
 
 /// The person's home folder on this system.
@@ -137,7 +160,7 @@ pub async fn on_this_system() -> Vec<Found> {
     AgentKind::ALL
         .into_iter()
         .filter_map(|kind| {
-            search(&path, kind.program()).map(|program| Found {
+            search_for(&path, kind.program(), |program| kind.owns(program)).map(|program| Found {
                 kind,
                 runs_in: RunsIn::Windows,
                 program: program.to_string_lossy().into_owned(),
@@ -157,11 +180,16 @@ const MARK: &str = "--player-two--";
 pub async fn in_distro(distro: &str) -> Option<Vec<Found>> {
     let probes: String = AgentKind::ALL
         .iter()
-        .map(|kind| {
-            format!(
+        .map(|kind| match kind {
+            // The first `agent` on the `PATH` that links into Cursor's install folder.
+            AgentKind::Cursor => format!(
+                "printf '%s\\n' \"$(IFS=:; for d in $PATH; do f=\"$d/{}\"; [ -f \"$f\" ] && [ -x \"$f\" ] || continue; case \"$(readlink -f \"$f\")\" in */{CURSOR_FOLDER}/*) printf '%s' \"$f\"; break;; esac; done)\"; ",
+                kind.program()
+            ),
+            AgentKind::Copilot | AgentKind::Claude => format!(
                 "printf '%s\\n' \"$(command -v {} 2>/dev/null)\"; ",
                 kind.program()
-            )
+            ),
         })
         .collect();
     let script = format!("printf '{MARK}\\n%s\\n%s\\n' \"$PATH\" \"$HOME\"; {probes}");
@@ -283,7 +311,7 @@ pub fn for_system<'a>(
 mod tests {
     use player_two_core::event::RunsIn;
 
-    use super::{AgentKind, for_system, half_installed_on, parse_distro, search};
+    use super::{AgentKind, for_system, half_installed_on, parse_distro, search, search_for};
 
     #[test]
     fn a_distros_agents_are_read_past_whatever_the_profile_printed() {
@@ -318,6 +346,36 @@ mod tests {
         let path = folder.path().to_string_lossy().into_owned();
         assert_eq!(search(&path, "agent"), Some(folder.path().join(name)));
         assert_eq!(search(&path, "copilot"), None);
+    }
+
+    #[test]
+    fn only_cursors_own_agent_is_cursor() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let name = if cfg!(windows) { "agent.cmd" } else { "agent" };
+        let other = folder.path().join("grok").join("bin");
+        let cursors = folder.path().join("cursor-agent");
+        for dir in [&other, &cursors] {
+            std::fs::create_dir_all(dir).expect("made");
+            std::fs::write(dir.join(name), "").expect("written");
+        }
+        assert!(!AgentKind::Cursor.owns(&other.join(name)));
+        assert!(AgentKind::Cursor.owns(&cursors.join(name)));
+        assert!(AgentKind::Copilot.owns(&other.join(name)));
+        // Another tool's `agent` comes first on the PATH, and is passed over.
+        let path = std::env::join_paths([&other, &cursors])
+            .expect("a PATH")
+            .to_string_lossy()
+            .into_owned();
+        let found = search_for(&path, "agent", |program| AgentKind::Cursor.owns(program));
+        assert_eq!(found, Some(cursors.join(name)));
+        #[cfg(unix)]
+        {
+            // On Linux the installer links ~/.local/bin/agent into its versions folder.
+            let bin = folder.path().join("bin");
+            std::fs::create_dir(&bin).expect("made");
+            std::os::unix::fs::symlink(cursors.join(name), bin.join("agent")).expect("linked");
+            assert!(AgentKind::Cursor.owns(&bin.join("agent")));
+        }
     }
 
     #[test]

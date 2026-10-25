@@ -20,7 +20,7 @@ A teammate's request waits for one click, and after it the agent asks nobody. On
   - Each agent starts in its own mode that does not ask: Claude Code's adapter is set to `bypassPermissions` with `session/set_mode`, Copilot gets `--allow-all`, and Cursor gets `--force`.
   - The desk says yes to anything that still asks.
   - The setup check starts the agent exactly as a run does.
-- [ ] **P7-6 Only Cursor's `agent` is Cursor.** An `agent` on the `PATH` counts as Cursor only when it is in Cursor's own install folder. Any other is ignored.
+- [x] **P7-6 Only Cursor's `agent` is Cursor.** An `agent` on the `PATH` counts as Cursor only when it is in Cursor's own install folder. Any other is ignored.
 - [ ] **P7-7 Only a tag reaches an agent.**
   - A follow-up is a message in a request's thread that tags the place again. A message without tags is a comment, and runs nothing, in your own run's thread too.
   - Keep going lets the asker's follow-ups run without a click, until Stop or an hour after the agent last finished in the thread.
