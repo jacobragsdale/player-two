@@ -117,7 +117,7 @@ The hub keeps its data in a Postgres database of its own, at `PLAYER_TWO_DATABAS
 
 The one row of `schema_version` holds the schema's version, and the hub brings an older database forward on start.
 
-Every night at 03:00 UTC, the hub deletes events older than `PLAYER_TWO_RETENTION_DAYS`. Backups are the database instance's.
+Every night at 03:00 UTC, the hub deletes each thread whose newest event is older than `PLAYER_TWO_RETENTION_DAYS`, whole, so that no reply or run is left without its message. A message outside any thread is a thread of its own. Backups are the database instance's.
 
 ## The hub's environment
 

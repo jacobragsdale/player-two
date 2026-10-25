@@ -10,7 +10,7 @@ A teammate's request waits for one click, and after it the agent asks nobody. On
   - SQLite goes: `PLAYER_TWO_DB`, `PLAYER_TWO_BACKUPS`, `quick_check`, the nightly copies, `deploy/k8s/data.yaml` and its NFS volumes. Backups are the database instance's.
   - Tests make a database of their own in the Postgres at `PLAYER_TWO_TEST_DATABASE_URL`, and drop it after. Without it they fail and say how to start one. Windows CI starts the PostgreSQL the runner has.
   - The README and `AGENTS.md` say how.
-- [ ] **P7-2 Retention by thread.** The nightly job deletes a thread whole once its newest event is older than `PLAYER_TWO_RETENTION_DAYS`, so a reply is never left without its message.
+- [x] **P7-2 Retention by thread.** The nightly job deletes a thread whole once its newest event is older than `PLAYER_TWO_RETENTION_DAYS`, so a reply is never left without its message.
 - [ ] **P7-3 Removing someone.** `player-two-hub remove NAME` drops their token, takes them out of every channel and off `GET /people`, and closes their stream. Their messages stay until retention takes them.
 - [ ] **P7-4 No modes.**
   - A teammate's request runs once its owner approves it, and your own tag runs at once. Either may do anything the owner's user can.

@@ -1,4 +1,4 @@
-//! What the hub does every night at 03:00 UTC: forget what is past keeping. Backups are the
+//! What the hub does every night at 03:00 UTC: forget the threads past keeping. Backups are the
 //! database instance's.
 
 use std::time::Duration;
@@ -27,7 +27,9 @@ pub async fn every_night(state: AppState) {
     }
 }
 
-/// Deletes events older than the retention period.
+/// Deletes each thread whose newest event is older than the retention period, whole, so that no
+/// reply or run is left without the message it answers. A message outside any thread is a thread
+/// of its own.
 pub async fn run(state: &AppState) -> anyhow::Result<()> {
     let now = state.clock.now();
     let days = i64::from(state.config.retention_days);
@@ -35,7 +37,13 @@ pub async fn run(state: &AppState) -> anyhow::Result<()> {
         .db
         .lock()
         .await
-        .execute("DELETE FROM events WHERE ts < $1", &[&(now - days * DAY)])
+        .execute(
+            "DELETE FROM events WHERE COALESCE(thread, id) IN (
+                 SELECT COALESCE(thread, id) AS root FROM events
+                 GROUP BY root HAVING max(ts) < $1
+             )",
+            &[&(now - days * DAY)],
+        )
         .await?;
     Ok(())
 }

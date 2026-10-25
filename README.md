@@ -55,7 +55,7 @@ The hub is one container, run on Kubernetes, with its data in a Postgres databas
 
 If someone's machine is replaced, they cannot join again under their name until an admin runs `player-two-hub reset NAME` the same way. Their chats are kept.
 
-Backups are the Postgres instance's. To restore one, scale the deployment to 0, restore the `player_two` database as you would any other, and scale back to 1. When the hub cannot reach its database it stops, and Kubernetes starts it again. Messages older than 30 days are deleted; `PLAYER_TWO_RETENTION_DAYS` changes that.
+Backups are the Postgres instance's. To restore one, scale the deployment to 0, restore the `player_two` database as you would any other, and scale back to 1. When the hub cannot reach its database it stops, and Kubernetes starts it again. A thread is deleted once nothing in it is newer than 30 days; `PLAYER_TWO_RETENTION_DAYS` changes that.
 
 ## Releasing
 
