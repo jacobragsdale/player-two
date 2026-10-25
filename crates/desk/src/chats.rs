@@ -580,9 +580,23 @@ impl Chats {
             .collect()
     }
 
-    /// The `@` mentions in a message that name nobody who has joined, a place they do not
-    /// advertise, or someone with no agent set up, each as a line to show under it.
-    fn unknown(&self, message: &Message) -> Vec<String> {
+    /// Whether `person` can read `chat`: a member of the channel, or one of the two in a direct
+    /// chat. A tag of anyone else would wait where they never see it.
+    #[must_use]
+    pub fn in_chat(&self, chat: &ChatId, person: &PersonName) -> bool {
+        match chat {
+            ChatId::Channel(name) => self
+                .channels
+                .iter()
+                .any(|channel| &channel.name == name && channel.members.contains(person)),
+            ChatId::Direct(..) => chat.is_between(person),
+        }
+    }
+
+    /// The `@` mentions in a message that name nobody who has joined, someone not in the chat,
+    /// someone with no agent set up, or a place they do not advertise, each as a line to show
+    /// under it.
+    fn unknown(&self, chat: &ChatId, message: &Message) -> Vec<String> {
         let mut lines = Vec::new();
         for word in message.text.split_whitespace() {
             let Some(mention) = word.strip_prefix('@') else {
@@ -607,6 +621,10 @@ impl Chats {
                 place,
             ) {
                 (None, _) => format!("nobody named {name} has joined"),
+                (Some(person), _) if !self.in_chat(chat, &person.name) => format!(
+                    "{name} is not in {}, so {name} cannot see this",
+                    self.title(chat)
+                ),
                 // Someone advertising nothing has no agent: a machine with one is advertised.
                 (Some(person), _) if person.places.is_empty() && person.name == self.me => {
                     "you have not set up an agent yet; Settings shows how".to_owned()
@@ -657,7 +675,7 @@ impl Chats {
                     text: message.text.clone(),
                     tags: message.tags.clone(),
                     replies: replies.get(&event.id).copied().unwrap_or_default(),
-                    unknown: self.unknown(message),
+                    unknown: self.unknown(chat, message),
                     runs: runs.remove(&event.id).unwrap_or_default(),
                     waiting: message
                         .tags
@@ -1002,12 +1020,19 @@ mod tests {
             name: player_two_core::names::PlaceName::machine(),
             kind: player_two_core::api::PlaceKind::Machine,
         });
-        chats.set_people(vec![person("alice"), bob, person("carol")]);
-        let text = "@carol, @alice, @bob/billing and @dave: help";
+        let mut erin = bob.clone();
+        erin.name = name("erin");
+        chats.set_people(vec![person("alice"), bob, person("carol"), erin]);
+        chats.set_channels(vec![ChannelInfo {
+            name: ChannelName::new("ops").expect("a channel"),
+            members: vec![name("alice"), name("bob"), name("carol")],
+        }]);
+        let text = "@carol, @alice, @bob/billing, @erin and @dave: help";
         let mut sent = message(1, &ops, "alice", None, text);
         // The tags are read as the sender's desk reads them.
         if let Body::Message(body) = &mut sent.body {
             body.tags = crate::tags::read(text, chats.people());
+            body.tags.retain(|tag| chats.in_chat(&ops, &tag.person));
             assert!(body.tags.is_empty(), "none of them reaches a place");
         }
         chats.apply(sent);
@@ -1017,6 +1042,7 @@ mod tests {
                 "carol has not set up an agent yet",
                 "you have not set up an agent yet; Settings shows how",
                 "bob does not share billing",
+                "erin is not in #ops, so erin cannot see this",
                 "nobody named dave has joined",
             ]
         );

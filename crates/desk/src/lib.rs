@@ -680,7 +680,10 @@ impl Desk {
                 .chats
                 .as_ref()
                 .context("the chats have not loaded yet")?;
-            (chats.me().clone(), tags::read(&text, chats.people()))
+            let mut tags = tags::read(&text, chats.people());
+            // A tag of someone who cannot read this chat would wait where they never see it.
+            tags.retain(|tag| chats.in_chat(&chat, &tag.person));
+            (chats.me().clone(), tags)
         };
         let settings = self.settings()?;
         let body = Body::Message(Message {

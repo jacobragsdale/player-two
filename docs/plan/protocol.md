@@ -65,7 +65,7 @@ Every event has the same envelope: `{ id, chat, thread, author, kind, body, ts }
 
 Rules every desk keeps, as well as the hub:
 
-- **Only the sender's desk resolves tags,** and only in a `message` that a person typed. Nobody looks for tags in an agent's output.
+- **Only the sender's desk resolves tags,** and only in a `message` that a person typed. Nobody looks for tags in an agent's output. A tag of someone who cannot read the chat is not resolved, since they would never see it.
 - **Only a tag reaches an agent.** A `message` without tags is a comment, in any thread.
 - **A follow-up is a `message` in a request's thread that tags the place again.** It goes to that place's session in the thread, whoever wrote it, and needs a new `run.accepted` from the owner. The owner's desk posts that by itself for the asker the owner let keep going, until a `run.ended` with `how: "stopped"`, or until an hour after the agent last finished in the thread.
 - **A fresh session**, after a restart, an hour, or a move to another system, is given each request that ran at that place in the thread and the agent's answers to them, and no comment.
