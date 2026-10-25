@@ -32,7 +32,7 @@ A teammate's request waits for one click, and after it the agent asks nobody. On
 - [x] **P7-10 Following a thread.** A comment in a thread notifies whoever wrote its first message, anyone who has written in it, and the owner of any run in it, but not its author.
 - [x] **P7-11 The preamble.** It says the agent may do what the request needs, and that everything it reads or prints is shown to everyone in the chat, so it must never print passwords, tokens or keys.
 - [ ] **P7-12 Asking before stopping a run.** While a run is going at one of your places, Update and the tray's Quit ask first, naming the run they would stop.
-- [ ] **P7-13 A long answer is cut.** An agent's answer longer than an event may hold is cut to fit, and says so, rather than lost.
+- [x] **P7-13 A long answer is cut.** An agent's answer longer than an event may hold is cut to fit, and says so, rather than lost.
 - [ ] **P7-14 (workstation)**
   - With Cursor: whether `agent acp --force` stops it asking, and whether its permission options spell their `kind` `allow-once`.
   - Where Cursor's installer puts `agent` on Windows, and what `agent --version` prints.

@@ -59,7 +59,7 @@ Every event has the same envelope: `{ id, chat, thread, author, kind, body, ts }
 | `run.declined` | `{ request, place }`: that place will not run it. Each tag of a request is answered on its own. | The owner of the tagged place. |
 | `run.withdrawn` | `{ request }` | Whoever wrote the request. |
 | `run.activity` | `{ run, items: [{ id, verb, object, outcome?, output? }] }`. `run` is the `id` of its `run.accepted`. | The owner. |
-| `run.result` | `{ run, text }`: the agent's answer, as Markdown. | The owner. |
+| `run.result` | `{ run, text }`: the agent's answer, as Markdown. One longer than 64,000 characters is cut to fit, and says so. | The owner. |
 | `run.ended` | `{ run, how, reason? }`. `how` is `done`, `stopped` or `failed`. | The owner. |
 | `run.stop` | `{ run }`: the asker wants the run stopped. The owner's desk stops it as if the owner had pressed Stop. | The asker: whoever wrote the request the run answers. |
 

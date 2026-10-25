@@ -8,7 +8,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use player_two_core::event::{
-    Activity, Body, Ending, Event, EventId, RunAccepted, RunActivity, RunEnded, RunResult, RunsIn,
+    Activity, Body, Ending, Event, EventId, MAX_TEXT, RunAccepted, RunActivity, RunEnded,
+    RunResult, RunsIn,
 };
 use player_two_core::names::{ChatId, PersonName, PlaceName};
 use tokio::sync::mpsc;
@@ -41,6 +42,23 @@ pub struct Order {
     pub runs_in: RunsIn,
     /// Whether the asker's follow-ups run without a new click.
     pub keep_going: bool,
+}
+
+/// What follows an answer cut to fit in an event.
+const CUT: &str = "\n\n(The rest of the answer was cut: it was longer than the chat holds.)";
+
+/// An answer as the chat may hold it: whole when it fits, or else its start and a note saying
+/// it was cut.
+#[must_use]
+pub fn fitted(answer: &str) -> String {
+    if answer.chars().count() <= MAX_TEXT {
+        return answer.to_owned();
+    }
+    let kept: String = answer
+        .chars()
+        .take(MAX_TEXT - CUT.chars().count())
+        .collect();
+    format!("{kept}{CUT}")
 }
 
 /// What every turn starts with: whose machine, who asked, what it may do, that the chat sees all
@@ -361,7 +379,7 @@ impl Desk {
                 };
                 let result = Body::RunResult(RunResult {
                     run: report.run,
-                    text: mask(&text),
+                    text: fitted(&mask(&text)),
                 });
                 if let Err(error) = self.post(&report.chat, Some(report.thread), result).await {
                     eprintln!("error: cannot post a run's answer: {error:#}");
@@ -553,10 +571,19 @@ impl Desk {
 
 #[cfg(test)]
 mod tests {
-    use player_two_core::event::RunsIn;
+    use player_two_core::event::{MAX_TEXT, RunsIn};
     use player_two_core::names::PersonName;
 
-    use super::preamble;
+    use super::{fitted, preamble};
+
+    #[test]
+    fn a_long_answer_is_cut_to_fit_and_says_so() {
+        assert_eq!(fitted("Fixed."), "Fixed.");
+        let long = "é".repeat(MAX_TEXT + 10);
+        let cut = fitted(&long);
+        assert_eq!(cut.chars().count(), MAX_TEXT);
+        assert!(cut.starts_with("éé") && cut.ends_with("longer than the chat holds.)"));
+    }
 
     #[test]
     fn the_preamble_says_whose_machine_and_never_to_elevate() {
