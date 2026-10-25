@@ -38,7 +38,7 @@ describe("a person's message", () => {
 
   test("keeps its author and text inert in the message around it", () => {
     const item = { id: 1, author: '<img src=x onerror="pwned()">', ts: 0, text: HOSTILE, tags: [], replies: 0, runs: [], waiting: [], follows: null, unknown: [] };
-    const markup = renderToStaticMarkup(<Message item={item} me="alice" chat="#ops" onThread={null} busy={[]} mode="ask" />);
+    const markup = renderToStaticMarkup(<Message item={item} me="alice" chat="#ops" onThread={null} busy={[]} />);
     expect(dangerous(markup)).toBeNull();
   });
 });
@@ -66,21 +66,18 @@ describe("an agent's Markdown", () => {
 });
 
 describe("an agent's run", () => {
-  test("draws what it printed, what it asks and what it answered without running any of it", () => {
+  test("draws what it printed and what it answered without running any of it", () => {
     const run: RunView = {
       id: 7,
       thread: 6,
       owner: "bob",
       place: "machine",
       runs_in: "windows",
-      mode: "ask",
-      steps_by: "owner",
+      keep_going: false,
       state: "working",
       reason: null,
       activity: [{ id: "t1", verb: "ran", object: "<img src=x onerror=pwned()>", outcome: "exit 0", output: HOSTILE }],
-      prompts: [{ id: "p1", what: "<script>window.pwned = 9</script>", allow: null, by: null }],
       result: `**fixed**\n\n${HOSTILE}`,
-      may_answer: true,
       may_stop: false,
       mine: false
     };
@@ -88,6 +85,5 @@ describe("an agent's run", () => {
     expect(dangerous(markup)).toBeNull();
     expect(markup).toContain("<strong>fixed</strong>");
     expect(markup).toContain("bob&#x27;s agent is working on bob&#x27;s computer");
-    expect(markup).toContain("Allow");
   });
 });

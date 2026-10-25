@@ -5,7 +5,7 @@
 //! window is typed by what is here and never by hand.
 
 use player_two_core::api::{ChannelInfo, Person};
-use player_two_core::event::{Activity, EventId, Mode, RunsIn, StepsBy, Tag};
+use player_two_core::event::{Activity, EventId, RunsIn, Tag};
 use player_two_core::names::{ChatId, PersonName, PlaceName};
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -49,11 +49,8 @@ pub enum Request {
         thread: Option<EventId>,
         /// What it says.
         text: String,
-        /// The mode for the person's own agent, which becomes their default; none keeps it.
-        mode: Option<Mode>,
     },
-    /// Runs a request of the person's own that waited while its place was busy, at their
-    /// default mode.
+    /// Runs a request of the person's own that waited while its place was busy.
     RunNow {
         /// The chat it is in.
         chat: ChatId,
@@ -71,19 +68,6 @@ pub enum Request {
         thread: EventId,
         /// The run, by its `run.accepted`.
         run: EventId,
-    },
-    /// Answers a step a run waits on.
-    Answer {
-        /// The chat the run is in.
-        chat: ChatId,
-        /// The thread its events are in.
-        thread: EventId,
-        /// The run.
-        run: EventId,
-        /// The step.
-        prompt: String,
-        /// Whether it may go ahead.
-        allow: bool,
     },
     /// Marks everything in a chat as read.
     Read {
@@ -158,12 +142,8 @@ pub enum Request {
         request: EventId,
         /// The place it runs at.
         place: PlaceName,
-        /// How much it may do.
-        mode: Mode,
         /// Where on the machine.
         runs_in: RunsIn,
-        /// Who answers its steps.
-        steps_by: StepsBy,
         /// Whether the asker's follow-ups run without a new click.
         keep_going: bool,
     },
@@ -251,8 +231,8 @@ pub enum Event {
         chat: ChatId,
     },
     /// Something worth a notification arrived: a direct message, a tag of the person or their
-    /// places, a follow-up waiting for their click, a step waiting for their yes, or the end of
-    /// a run they asked for. The app shows it while the window is not in front.
+    /// places, a follow-up waiting for their click, or the end of a run they asked for. The app
+    /// shows it while the window is not in front.
     Notify {
         /// Where.
         chat: ChatId,
@@ -352,8 +332,6 @@ pub struct Overview {
     pub people: Vec<Person>,
     /// Every channel, joined or not.
     pub channels: Vec<ChannelInfo>,
-    /// The mode the person's own tags run at.
-    pub default_mode: Mode,
     /// The person's places with a run going now.
     pub busy: Vec<PlaceName>,
 }
@@ -448,39 +426,20 @@ pub struct RunView {
     pub place: PlaceName,
     /// Where on the machine.
     pub runs_in: RunsIn,
-    /// How much it may do.
-    pub mode: Mode,
-    /// Who answers its steps.
-    pub steps_by: StepsBy,
+    /// Whether its asker's follow-ups run without a new click.
+    pub keep_going: bool,
     /// How it stands.
     pub state: RunState,
     /// Why it failed or was stopped, when it says.
     pub reason: Option<String>,
     /// What it did, each item as it now stands, in the order they began.
     pub activity: Vec<Activity>,
-    /// The steps it asked about.
-    pub prompts: Vec<PromptView>,
     /// The agent's answer, as Markdown.
     pub result: Option<String>,
-    /// Whether this person may answer its steps.
-    pub may_answer: bool,
     /// Whether this person may stop it: its owner, or its asker.
     pub may_stop: bool,
     /// Whether the run is this machine's, so this person may stop it.
     pub mine: bool,
-}
-
-/// One step a run asked about.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Type)]
-pub struct PromptView {
-    /// The step's id.
-    pub id: String,
-    /// What the agent wants to do.
-    pub what: String,
-    /// The yes or no, once given.
-    pub allow: Option<bool>,
-    /// Who gave it.
-    pub by: Option<PersonName>,
 }
 
 #[cfg(test)]

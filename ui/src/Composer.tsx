@@ -1,61 +1,18 @@
-/**
- * The message box: Enter sends, Shift+Enter starts a new line, and a message that could not be sent stays in the box with the reason under it. While the text tags one of the person's own places,
- * or in the thread of a run of theirs, the mode their agent runs at shows under it, and they can switch it in one click; the switch becomes their default.
- */
+/** The message box: Enter sends, Shift+Enter starts a new line, and a message that could not be sent stays in the box with the reason under it. */
 
 import { useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
 
 import { Textarea } from "@/components/ui/textarea";
 
-import type { ChatId, Mode, Person } from "./desk.ts";
+import type { ChatId, Person } from "./desk.ts";
 import { ask, problem } from "./deskClient.ts";
 import { candidates, typedTag } from "./tagList.ts";
-
-const MODES: readonly { readonly mode: Mode; readonly label: string; readonly meaning: string }[] = [
-  { mode: "read-only", label: "Read-only", meaning: "Your agent may read and search, and change nothing." },
-  { mode: "ask", label: "Ask", meaning: "Each change or command your agent wants to make waits for your yes." },
-  { mode: "full", label: "Full", meaning: "Your agent may do what it needs without asking." }
-];
-
-/** The mode the person's own agent runs at, as three buttons. */
-function ModeSwitch({ mode, onMode }: { readonly mode: Mode; readonly onMode: (mode: Mode) => void }): JSX.Element {
-  return (
-    <div className="mt-1.5 flex items-center gap-1 text-xs text-muted-foreground" role="radiogroup" aria-label="Your agent's mode">
-      <span>Your agent:</span>
-      {MODES.map((each) => (
-        <button
-          key={each.mode}
-          type="button"
-          role="radio"
-          aria-checked={mode === each.mode}
-          title={each.meaning}
-          className="rounded px-1.5 py-0.5 hover:bg-muted aria-checked:bg-muted aria-checked:font-semibold aria-checked:text-foreground"
-          onClick={() => {
-            onMode(each.mode);
-          }}
-        >
-          {each.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-/** Whether a text tags one of `me`'s places: `@me` or `@me/place`, starting the text or after a space. */
-export function tagsMe(text: string, me: string): boolean {
-  return new RegExp(`(^|\\s)@${me}(/[a-z0-9._-]+)?($|[\\s,.;:!?])`).test(text);
-}
 
 interface Props {
   readonly chat: ChatId;
   readonly thread: number | null;
   readonly placeholder: string;
-  readonly me: string;
-  /** Whether this is the thread of a run of the person's own, where a follow-up runs their agent. */
-  readonly ownThread: boolean;
-  /** The mode the person's own agent runs at: the default, until they switch it. */
-  readonly mode: Mode;
   /** Everyone who can be tagged, and who is in this chat. */
   readonly people: readonly Person[];
   readonly members: readonly string[];
@@ -85,7 +42,7 @@ function TagList({ tags, picked, onPick }: { readonly tags: readonly string[]; r
   );
 }
 
-export function Composer({ chat, thread, placeholder, me, ownThread, mode: usual, people, members }: Props): JSX.Element {
+export function Composer({ chat, thread, placeholder, people, members }: Props): JSX.Element {
   const [text, setText] = useState("");
   const [caret, setCaret] = useState(0);
   const [picked, setPicked] = useState(0);
@@ -108,7 +65,6 @@ export function Composer({ chat, thread, placeholder, me, ownThread, mode: usual
       box.current?.setSelectionRange(start + tag.length + 1, start + tag.length + 1);
     });
   };
-  const [mode, setMode] = useState<Mode>(usual);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
 
@@ -118,7 +74,7 @@ export function Composer({ chat, thread, placeholder, me, ownThread, mode: usual
     }
     setSending(true);
     setError("");
-    ask({ type: "send", chat, thread, text, mode: mode === usual ? null : mode }).then(
+    ask({ type: "send", chat, thread, text }).then(
       () => {
         setSending(false);
         setText("");
@@ -196,7 +152,6 @@ export function Composer({ chat, thread, placeholder, me, ownThread, mode: usual
           not sent: {error}
         </p>
       )}
-      {(ownThread || tagsMe(text, me)) && <ModeSwitch mode={mode} onMode={setMode} />}
     </div>
   );
 }

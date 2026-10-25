@@ -1,5 +1,6 @@
-//! Talking to an agent over ACP: one session in a folder, turns sent to it one at a time, what it
-//! does reported as activity, and each permission it asks for passed up to be decided.
+//! Talking to an agent over ACP: one session in a folder, turns sent to it one at a time, and what
+//! it does reported as activity. A run its owner let go may do anything, so each permission the
+//! agent still asks for is given, once.
 
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
@@ -16,25 +17,9 @@ use player_two_core::event::Activity;
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
-use crate::activity::{Calls, Reach};
+use crate::activity::Calls;
 use crate::agents::{AgentKind, Found};
 use crate::process::{self, Running};
-
-/// What a session tells the run it serves.
-#[derive(Debug)]
-pub enum Said {
-    /// The agent did something, or did more of it.
-    Activity(Activity),
-    /// The agent asks whether it may do something. The answer is sent back on `answer`.
-    Asks {
-        /// What it would do, in one line.
-        what: String,
-        /// How far that reaches.
-        reach: Reach,
-        /// Where the yes or no goes.
-        answer: oneshot::Sender<bool>,
-    },
-}
 
 /// How a turn ended.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -180,7 +165,7 @@ impl Session {
     pub async fn open(
         agent: &Found,
         folder: &str,
-        said: mpsc::UnboundedSender<Said>,
+        said: mpsc::UnboundedSender<Activity>,
     ) -> anyhow::Result<Self> {
         let (running, stdin, stdout) = process::start(agent, folder)?;
         let process = Arc::new(tokio::sync::Mutex::new(running));
@@ -191,8 +176,7 @@ impl Session {
         let cwd = folder.to_owned();
         let calls = Arc::new(Mutex::new(Calls::default()));
         let answers = Arc::new(Mutex::new(String::new()));
-        let (for_updates, for_asks, for_turns) = (Arc::clone(&calls), calls, Arc::clone(&answers));
-        let (updates_said, asks_said) = (said.clone(), said);
+        let (for_updates, for_turns) = (calls, Arc::clone(&answers));
         let errors = Arc::clone(&process);
         tokio::spawn(async move {
             let transport = ByteStreams::new(stdin.compat_write(), stdout.compat());
@@ -217,28 +201,22 @@ impl Session {
                         };
                         if let Some(item) = item {
                             // A run that has gone hears nothing more; the session is ending too.
-                            let _ = updates_said.send(Said::Activity(item));
+                            let _ = said.send(item);
                         }
                         Ok(())
                     },
                     agent_client_protocol::on_receive_notification!(),
                 )
                 .on_receive_request(
-                    async move |request: RequestPermissionRequest, responder, connection: ConnectionTo<Agent>| {
-                        let (what, reach) = for_asks.lock().unwrap_or_else(PoisonError::into_inner).asking(&request.tool_call);
-                        let (answer, decided) = oneshot::channel();
-                        let _ = asks_said.send(Said::Asks { what, reach, answer });
-                        // The decision may take a person minutes: wait for it off the dispatch loop.
-                        connection.spawn(async move {
-                            let allow = decided.await.unwrap_or(false);
-                            let wanted = if allow { [PermissionOptionKind::AllowOnce, PermissionOptionKind::AllowAlways] } else { [PermissionOptionKind::RejectOnce, PermissionOptionKind::RejectAlways] };
-                            let chosen = wanted.iter().find_map(|kind| request.options.iter().find(|option| option.kind == *kind));
-                            let outcome = match chosen {
-                                Some(option) => RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new(option.option_id.clone())),
-                                None => RequestPermissionOutcome::Cancelled,
-                            };
-                            responder.respond(RequestPermissionResponse::new(outcome))
-                        })
+                    async move |request: RequestPermissionRequest, responder, _connection: ConnectionTo<Agent>| {
+                        // Once is enough: an agent may keep an "always" in its own settings, past this run.
+                        let wanted = [PermissionOptionKind::AllowOnce, PermissionOptionKind::AllowAlways];
+                        let chosen = wanted.iter().find_map(|kind| request.options.iter().find(|option| option.kind == *kind));
+                        let outcome = match chosen {
+                            Some(option) => RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new(option.option_id.clone())),
+                            None => RequestPermissionOutcome::Cancelled,
+                        };
+                        responder.respond(RequestPermissionResponse::new(outcome))
                     },
                     agent_client_protocol::on_receive_request!(),
                 )

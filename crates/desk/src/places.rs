@@ -5,18 +5,15 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use player_two_core::api::{PlaceInfo, PlaceKind};
-use player_two_core::event::{Mode, RunsIn};
+use player_two_core::event::RunsIn;
 use player_two_core::names::PlaceName;
 use serde::{Deserialize, Serialize};
 
 use crate::{agents, system};
 
-/// The person's settings.
+/// The person's settings. A field an older app wrote, such as the mode runs had, is ignored.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Settings {
-    /// The mode the person's own tags run at.
-    #[serde(default = "ask")]
-    pub default_mode: Mode,
     /// Where `@me` runs by default: Windows, or a WSL distro.
     #[serde(default = "windows")]
     pub machine_runs_in: RunsIn,
@@ -36,17 +33,12 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            default_mode: ask(),
             machine_runs_in: windows(),
             folders: Vec::new(),
             agents: BTreeMap::new(),
             custom_agent: None,
         }
     }
-}
-
-fn ask() -> Mode {
-    Mode::Ask
 }
 
 fn windows() -> RunsIn {

@@ -1,11 +1,11 @@
-//! Phase 5's scenario: Jacob asks Alice's machine for help, Alice approves at ask mode and hands
-//! Jacob the steps, a follow-up runs under keep going, Alice stops, a later follow-up waits for
-//! her, and Carol, in the chat, sees it all but cannot answer a step.
+//! The help-with-my-machine scenario: Jacob asks Alice's machine for help, Alice approves once
+//! and the agent asks nobody after, a follow-up runs under keep going, Alice stops, a later
+//! follow-up waits for her, and Carol, in the chat, sees it all.
 
 mod common;
 
 use common::{Hub, chat};
-use player_two_core::event::{Mode, RunsIn, StepsBy};
+use player_two_core::event::RunsIn;
 use player_two_core::names::{ChatId, PlaceName};
 use player_two_desk::Desk;
 use player_two_desk::ui::{ChatView, Item, Request, Response, RunState};
@@ -23,7 +23,6 @@ async fn send(desk: &Desk, text: &str, thread: Option<i64>) {
             chat: id(CHAT),
             thread,
             text: text.to_owned(),
-            mode: None,
         })
         .await;
     assert_eq!(sent, Ok(Response::Done));
@@ -90,14 +89,12 @@ async fn three(hub: &Hub) -> (Desk, Desk, Desk) {
     (alice, jacob, carol)
 }
 
-fn approve(request: &Item, steps_by: StepsBy, keep_going: bool) -> Request {
+fn approve(request: &Item, keep_going: bool) -> Request {
     Request::Approve {
         chat: id(CHAT),
         request: request.id,
         place: PlaceName::machine(),
-        mode: Mode::Ask,
         runs_in: RunsIn::Windows,
-        steps_by,
         keep_going,
     }
 }
@@ -131,68 +128,29 @@ async fn jacob_helps_alice_fix_her_proxy() {
         (vec![RunsIn::Windows], RunsIn::Windows, false)
     );
 
-    // Alice approves, handing the steps to Jacob and letting him keep going.
+    // Alice approves once, letting Jacob keep going, and the agent asks nobody about its steps.
     assert_eq!(
-        alice.handle(approve(&request, StepsBy::Asker, true)).await,
-        Ok(Response::Done)
-    );
-    let asked = until(&jacob, None, ask, "the first step to reach jacob", |item| {
-        item.runs.first().is_some_and(|run| run.prompts.len() == 1)
-    })
-    .await;
-    let run = asked.runs[0].clone();
-    assert!(
-        run.may_answer && !run.mine,
-        "jacob answers the steps but does not own the run"
-    );
-    let seen_by_carol = until(&carol, None, ask, "carol to see the step", |item| {
-        item.runs.first().is_some_and(|run| run.prompts.len() == 1)
-    })
-    .await;
-    assert!(!seen_by_carol.runs[0].may_answer, "carol may not answer");
-    let refused = carol
-        .handle(Request::Answer {
-            chat: id(CHAT),
-            thread: run.thread,
-            run: run.id,
-            prompt: run.prompts[0].id.clone(),
-            allow: true,
-        })
-        .await;
-    assert!(refused.is_err(), "the hub refuses carol's answer");
-
-    let answer = |prompt: &str, allow: bool| Request::Answer {
-        chat: id(CHAT),
-        thread: run.thread,
-        run: run.id,
-        prompt: prompt.to_owned(),
-        allow,
-    };
-    assert_eq!(
-        jacob.handle(answer(&run.prompts[0].id, true)).await,
-        Ok(Response::Done)
-    );
-    let second = until(&jacob, None, ask, "the second step", |item| {
-        item.runs[0].prompts.len() == 2
-    })
-    .await;
-    assert_eq!(
-        jacob
-            .handle(answer(&second.runs[0].prompts[1].id, false))
-            .await,
+        alice.handle(approve(&request, true)).await,
         Ok(Response::Done)
     );
     let done = until(&carol, None, ask, "the run to finish", |item| {
-        item.runs[0].state == RunState::Done
+        item.runs
+            .first()
+            .is_some_and(|run| run.state == RunState::Done)
     })
     .await;
+    let run = done.runs[0].clone();
     assert_eq!(
-        done.runs[0].result.as_deref(),
-        Some("Did: read pip.conf, edit done, run refused.")
+        run.result.as_deref(),
+        Some("Did: read pip.conf, edit done, run done.")
     );
-    assert_eq!(
-        done.runs[0].prompts[0].by.as_ref().map(|by| by.as_str()),
-        Some("jacob")
+    assert!(
+        run.activity.iter().any(|item| item.id == "run-1"),
+        "carol sees what the agent did"
+    );
+    assert!(
+        !run.mine && !run.may_stop,
+        "carol neither owns nor asked for it"
     );
 
     // A follow-up in the thread runs at once, in the same session, under keep going.
@@ -357,7 +315,7 @@ async fn the_asker_can_stop_a_run_but_nobody_else() {
     })
     .await;
     assert_eq!(
-        alice.handle(approve(&request, StepsBy::Owner, false)).await,
+        alice.handle(approve(&request, false)).await,
         Ok(Response::Done)
     );
     let working = until(&jacob, None, ask, "the run to start", |item| {

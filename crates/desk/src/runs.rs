@@ -1,22 +1,20 @@
-//! Running an agent for a request: the run's record in the chat, its session, what its mode lets
-//! it do, the steps it waits on, and its reports. Each place runs one thing at a time. A session
-//! that finished is kept for the asker's follow-ups in the same thread, until the thread has been
-//! quiet for an hour.
+//! Running an agent for a request: the run's record in the chat, its session, and its reports. A
+//! run its owner let go may do anything: whatever the agent still asks about is allowed. Each
+//! place runs one thing at a time. A session that finished is kept for follow-ups in the same
+//! thread, until an hour after it last finished.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use player_two_core::event::{
-    Activity, Body, Ending, Event, EventId, Mode, RunAccepted, RunActivity, RunEnded, RunPrompt,
-    RunResult, RunsIn, StepsBy,
+    Activity, Body, Ending, Event, EventId, RunAccepted, RunActivity, RunEnded, RunResult, RunsIn,
 };
 use player_two_core::names::{ChatId, PersonName, PlaceName};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 
 use crate::Desk;
-use crate::acp::{Ended, Said, Session};
-use crate::activity::Reach;
+use crate::acp::{Ended, Session};
 use crate::agents;
 use crate::mask::mask;
 
@@ -27,27 +25,6 @@ const BATCH: Duration = Duration::from_millis(400);
 const GRACE: Duration = Duration::from_secs(3);
 /// How long a session is kept for follow-ups after its thread goes quiet.
 pub const QUIET: Duration = Duration::from_secs(3600);
-
-/// What a mode makes of a step the agent asks to take.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Decision {
-    /// It goes ahead.
-    Allow,
-    /// It does not.
-    Refuse,
-    /// A person decides.
-    Ask,
-}
-
-/// What `mode` makes of a step that reaches as far as `reach`.
-#[must_use]
-pub fn decide(mode: Mode, reach: Reach) -> Decision {
-    match (mode, reach) {
-        (_, Reach::Looks) | (Mode::Full, Reach::Changes) => Decision::Allow,
-        (Mode::ReadOnly, Reach::Changes) => Decision::Refuse,
-        (Mode::Ask, Reach::Changes) => Decision::Ask,
-    }
-}
 
 /// What a run is for.
 #[derive(Debug, Clone)]
@@ -62,23 +39,13 @@ pub struct Order {
     pub place: PlaceName,
     /// Where on the machine.
     pub runs_in: RunsIn,
-    /// How much it may do.
-    pub mode: Mode,
-    /// Who answers its steps.
-    pub steps_by: StepsBy,
     /// Whether the asker's follow-ups run without a new click.
     pub keep_going: bool,
 }
 
 /// What every turn starts with: whose machine, who asked, what it may do, and never to elevate.
 #[must_use]
-pub fn preamble(
-    owner: &PersonName,
-    asker: &PersonName,
-    runs_in: &RunsIn,
-    folder: &str,
-    mode: Mode,
-) -> String {
+pub fn preamble(owner: &PersonName, asker: &PersonName, runs_in: &RunsIn, folder: &str) -> String {
     let system = match runs_in {
         RunsIn::Windows => "Windows".to_owned(),
         RunsIn::Wsl(distro) => format!("the WSL distro {distro}"),
@@ -90,13 +57,8 @@ pub fn preamble(
             "{asker} asked for what follows, through Player Two, the chat their team shares. This is {owner}'s computer, not {asker}'s; {owner} let the request run."
         )
     };
-    let may = match mode {
-        Mode::ReadOnly => "You may read and search, but not change anything.",
-        Mode::Ask => "You may do what the request needs; each change or command waits for a yes.",
-        Mode::Full => "You may do what the request needs.",
-    };
     format!(
-        "You are an agent on {owner}'s computer, on {system}, in {folder}. {whose} {may} \
+        "You are an agent on {owner}'s computer, on {system}, in {folder}. {whose} You may do what the request needs. \
          Never try to run anything as administrator: no UAC prompts, runas or sudo. If a step needs admin rights, \
          stop and say exactly what {owner} should run themselves. Keep your answer short: it is posted in the chat.\n\n---\n\n"
     )
@@ -112,21 +74,14 @@ pub(crate) struct Active {
     session: Option<Arc<Session>>,
 }
 
-/// A step waiting for a yes or no, and who may give it.
-#[derive(Debug)]
-struct Waiting {
-    answer: oneshot::Sender<bool>,
-    by: Vec<PersonName>,
-}
-
 /// A session, with where its reports arrive and the folder it runs in.
-type Parts = (Arc<Session>, mpsc::UnboundedReceiver<Said>, String);
+type Parts = (Arc<Session>, mpsc::UnboundedReceiver<Activity>, String);
 
 /// A session kept after its run, for the asker's follow-ups in the same thread.
 #[derive(Debug)]
 pub(crate) struct Kept {
     session: Arc<Session>,
-    said: mpsc::UnboundedReceiver<Said>,
+    said: mpsc::UnboundedReceiver<Activity>,
     folder: String,
     place: PlaceName,
     keep_going: bool,
@@ -138,7 +93,6 @@ pub(crate) struct Kept {
 pub(crate) struct Runs {
     /// The runs going on or starting, by the name their place had when they started.
     pub(crate) active: HashMap<PlaceName, Active>,
-    waiting: HashMap<(EventId, String), Waiting>,
     /// Sessions kept for follow-ups, by the thread they serve.
     kept: HashMap<EventId, Kept>,
 }
@@ -219,8 +173,6 @@ impl Desk {
             request: order.request.id,
             place: order.place.clone(),
             runs_in: order.runs_in.clone(),
-            mode: order.mode,
-            steps_by: order.steps_by,
             keep_going: order.keep_going,
         });
         let run = match self.post(&chat, Some(thread), accepted).await {
@@ -281,7 +233,7 @@ impl Desk {
         let me = self.me().unwrap_or_else(|| order.asker.clone());
         let text = format!(
             "{}{earlier}{}",
-            preamble(&me, &order.asker, &order.runs_in, &parts.2, order.mode),
+            preamble(&me, &order.asker, &order.runs_in, &parts.2),
             order.text
         );
         let desk = self.clone();
@@ -335,21 +287,16 @@ impl Desk {
         let ended = loop {
             tokio::select! {
                 ended = &mut turn => break ended,
-                Some(heard) = said.recv() => match heard {
-                    Said::Activity(item) => {
-                        batch.retain(|kept| kept.id != item.id);
-                        batch.push(item);
-                    }
-                    Said::Asks { what, reach, answer } => self.asked(&order, &report, what, reach, answer).await,
-                },
+                Some(item) = said.recv() => {
+                    batch.retain(|kept| kept.id != item.id);
+                    batch.push(item);
+                }
                 _ = tick.tick() => self.report(&report, &mut batch).await,
             }
         };
-        while let Ok(heard) = said.try_recv() {
-            if let Said::Activity(item) = heard {
-                batch.retain(|kept| kept.id != item.id);
-                batch.push(item);
-            }
+        while let Ok(item) = said.try_recv() {
+            batch.retain(|kept| kept.id != item.id);
+            batch.push(item);
         }
         self.report(&report, &mut batch).await;
         let (how, reason) = match ended {
@@ -392,64 +339,6 @@ impl Desk {
         self.end_run(&report, how, reason).await;
     }
 
-    /// Decides a step by the run's mode, or asks a person and leaves the answer to come.
-    async fn asked(
-        &self,
-        order: &Order,
-        report: &Report,
-        what: String,
-        reach: Reach,
-        answer: oneshot::Sender<bool>,
-    ) {
-        match decide(order.mode, reach) {
-            Decision::Allow => {
-                let _ = answer.send(true);
-            }
-            Decision::Refuse => {
-                let _ = answer.send(false);
-            }
-            Decision::Ask => {
-                let prompt = format!("p{}", self.next_prompt());
-                let owner = self.me().unwrap_or_else(|| order.asker.clone());
-                let by = match order.steps_by {
-                    StepsBy::Owner => vec![owner],
-                    StepsBy::Asker => vec![owner, order.asker.clone()],
-                };
-                self.runs()
-                    .waiting
-                    .insert((report.run, prompt.clone()), Waiting { answer, by });
-                let body = Body::RunPrompt(RunPrompt {
-                    run: report.run,
-                    prompt: prompt.clone(),
-                    what: mask(&what),
-                });
-                if let Err(error) = self.post(&report.chat, Some(report.thread), body).await {
-                    eprintln!("error: cannot post a step to answer: {error:#}");
-                    if let Some(waiting) = self.runs().waiting.remove(&(report.run, prompt)) {
-                        let _ = waiting.answer.send(false);
-                    }
-                }
-            }
-        }
-    }
-
-    /// Passes a yes or no to the step it answers, if its author may give it.
-    pub(crate) fn answered(&self, event: &Event) {
-        let Body::RunAnswer(answer) = &event.body else {
-            return;
-        };
-        let mut runs = self.runs();
-        let key = (answer.run, answer.prompt.clone());
-        if runs
-            .waiting
-            .get(&key)
-            .is_some_and(|waiting| waiting.by.contains(&event.author))
-            && let Some(waiting) = runs.waiting.remove(&key)
-        {
-            let _ = waiting.answer.send(answer.allow);
-        }
-    }
-
     /// Posts what the agent did since the last report.
     async fn report(&self, report: &Report, batch: &mut Vec<Activity>) {
         if batch.is_empty() {
@@ -488,10 +377,9 @@ impl Desk {
     }
 
     fn forget_run(&self, run: EventId) {
-        let mut runs = self.runs();
-        runs.active.retain(|_, active| active.run != Some(run));
-        runs.waiting
-            .retain(|(waiting_run, _), _| *waiting_run != run);
+        self.runs()
+            .active
+            .retain(|_, active| active.run != Some(run));
     }
 
     fn was_stopped(&self, run: EventId) -> bool {
@@ -532,12 +420,6 @@ impl Desk {
         {
             eprintln!("error: cannot stop a run its asker stopped: {error:#}");
         }
-    }
-
-    fn next_prompt(&self) -> u64 {
-        self.inner
-            .prompts
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Whether a follow-up in `thread` at `place` may run without a click: its session is kept,
@@ -604,19 +486,10 @@ impl Desk {
 
 #[cfg(test)]
 mod tests {
-    use player_two_core::event::{Mode, RunsIn};
+    use player_two_core::event::RunsIn;
     use player_two_core::names::PersonName;
 
-    use super::{Decision, decide, preamble};
-    use crate::activity::Reach;
-
-    #[test]
-    fn modes_decide_steps() {
-        assert_eq!(decide(Mode::ReadOnly, Reach::Looks), Decision::Allow);
-        assert_eq!(decide(Mode::ReadOnly, Reach::Changes), Decision::Refuse);
-        assert_eq!(decide(Mode::Ask, Reach::Changes), Decision::Ask);
-        assert_eq!(decide(Mode::Full, Reach::Changes), Decision::Allow);
-    }
+    use super::preamble;
 
     #[test]
     fn the_preamble_says_whose_machine_and_never_to_elevate() {
@@ -627,20 +500,13 @@ mod tests {
             &jacob,
             &RunsIn::Wsl("Ubuntu".to_owned()),
             "/home/alice",
-            Mode::Ask,
         );
         assert!(text.contains("on alice's computer, on the WSL distro Ubuntu, in /home/alice"));
         assert!(text.contains("jacob asked"));
         assert!(text.contains("not jacob's"));
-        assert!(text.contains("each change or command waits for a yes"));
+        assert!(text.contains("You may do what the request needs."));
         assert!(text.contains("no UAC prompts, runas or sudo"));
-        let own = preamble(
-            &alice,
-            &alice,
-            &RunsIn::Windows,
-            "C:\\Users\\alice",
-            Mode::Full,
-        );
+        let own = preamble(&alice, &alice, &RunsIn::Windows, "C:\\Users\\alice");
         assert!(!own.contains("not alice's"));
     }
 }

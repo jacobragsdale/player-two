@@ -1,7 +1,7 @@
 //! Who may post what: the "who may post it" column of `docs/plan/protocol.md`'s events table.
 
 use player_two_core::api::NewEvent;
-use player_two_core::event::{Body, Event, EventId, Message, RunAccepted, StepsBy};
+use player_two_core::event::{Body, Event, EventId, Message, RunAccepted};
 use player_two_core::names::{PersonName, PlaceName};
 use tokio_postgres::GenericClient;
 
@@ -85,9 +85,6 @@ pub async fn may_post(
                 || follows_run_of(client, &request, author, None).await?
         }
         (Body::RunWithdrawn(_), Some(request), _) => &request.author == author,
-        (Body::RunAnswer(_), _, Some((owner, accepted))) => {
-            &owner == author || answered_by_asker(client, &accepted, author).await?
-        }
         (Body::RunStop(_), _, Some((_, accepted))) => asked_for(client, &accepted, author).await?,
         (_, _, Some((owner, _))) => &owner == author,
         _ => false,
@@ -141,18 +138,6 @@ async fn follows_run_of(
         }
     }
     Ok(false)
-}
-
-/// Whether `author` asked for the run and its owner handed them the steps.
-async fn answered_by_asker(
-    client: &impl GenericClient,
-    accepted: &RunAccepted,
-    author: &PersonName,
-) -> anyhow::Result<bool> {
-    if accepted.steps_by != StepsBy::Asker {
-        return Ok(false);
-    }
-    asked_for(client, accepted, author).await
 }
 
 /// Whether `author` wrote the request the run answers.

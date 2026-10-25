@@ -5,11 +5,11 @@ use std::collections::{BTreeMap, HashSet};
 
 use player_two_core::api::{ChannelInfo, Person, Presence};
 use player_two_core::event::{
-    Body, Ending, Event, EventId, Message, RunAccepted, RunDeclined, RunWithdrawn, StepsBy, Tag,
+    Body, Ending, Event, EventId, Message, RunAccepted, RunDeclined, RunWithdrawn, Tag,
 };
 use player_two_core::names::{ChatId, PersonName, PlaceName};
 
-use crate::ui::{ChatSummary, ChatView, Item, PromptView, RunState, RunView};
+use crate::ui::{ChatSummary, ChatView, Item, RunState, RunView};
 
 /// How many characters of a message a notification shows.
 const NOTICE_LENGTH: usize = 200;
@@ -177,25 +177,11 @@ impl Chats {
     }
 
     /// What to notify the person of, if anything: a direct message to them, a tag of them or
-    /// their places, a follow-up waiting for their click, a step waiting for their yes, or the end
-    /// of a run they asked for.
+    /// their places, a follow-up waiting for their click, or the end of a run they asked for.
     #[must_use]
     pub fn notice(&self, event: &Event) -> Option<Notice> {
         match &event.body {
             Body::Message(message) => self.message_notice(event, message),
-            Body::RunPrompt(prompt) => {
-                let (owner, accepted, asker) = self.run_of(&event.chat, prompt.run)?;
-                let answers = match accepted.steps_by {
-                    StepsBy::Owner => &owner,
-                    StepsBy::Asker => &asker,
-                };
-                (answers == &self.me).then(|| Notice {
-                    title: format!("{} waits for your yes", self.whose_agent(&owner)),
-                    body: shortened(&prompt.what),
-                    thread: event.thread,
-                    follows: None,
-                })
-            }
             Body::RunEnded(ended) => {
                 let (owner, _, asker) = self.run_of(&event.chat, ended.run)?;
                 if asker != self.me {
@@ -408,9 +394,6 @@ impl Chats {
                         .get(chat)
                         .and_then(|events| events.get(&accepted.request))
                         .map(|request| request.author.clone());
-                    let may_answer = event.author == self.me
-                        || (accepted.steps_by == StepsBy::Asker
-                            && asker.as_ref() == Some(&self.me));
                     let may_stop = event.author == self.me || asker.as_ref() == Some(&self.me);
                     requests.insert(event.id, accepted.request);
                     answered
@@ -425,14 +408,11 @@ impl Chats {
                             owner: event.author.clone(),
                             place: accepted.place.clone(),
                             runs_in: accepted.runs_in.clone(),
-                            mode: accepted.mode,
-                            steps_by: accepted.steps_by,
+                            keep_going: accepted.keep_going,
                             state: RunState::Working,
                             reason: None,
                             activity: Vec::new(),
-                            prompts: Vec::new(),
                             result: None,
-                            may_answer,
                             may_stop,
                             mine: event.author == self.me,
                         },
@@ -467,28 +447,6 @@ impl Chats {
                                 None => run.activity.push(item.clone()),
                             }
                         }
-                    }
-                }
-                Body::RunPrompt(prompt) => {
-                    if let Some(run) = runs.get_mut(&prompt.run) {
-                        run.prompts.push(PromptView {
-                            id: prompt.prompt.clone(),
-                            what: prompt.what.clone(),
-                            allow: None,
-                            by: None,
-                        });
-                    }
-                }
-                Body::RunAnswer(answer) => {
-                    // The first answer counts; a later one finds the step answered.
-                    if let Some(prompt) = runs.get_mut(&answer.run).and_then(|run| {
-                        run.prompts
-                            .iter_mut()
-                            .find(|prompt| prompt.id == answer.prompt)
-                    }) && prompt.allow.is_none()
-                    {
-                        prompt.allow = Some(answer.allow);
-                        prompt.by = Some(event.author.clone());
                     }
                 }
                 Body::RunResult(result) => {
@@ -734,7 +692,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     use player_two_core::api::{ChannelInfo, Person, Presence};
-    use player_two_core::event::{Body, Ending, Event, EventId, Message, RunAccepted, StepsBy};
+    use player_two_core::event::{Body, Ending, Event, EventId, Message, RunAccepted};
     use player_two_core::names::{ChannelName, ChatId, PersonName, PlaceName};
 
     use super::Chats;
@@ -898,7 +856,7 @@ mod tests {
     }
 
     /// Bob asks alice's machine in #ops (message 1), and alice lets it run (event 2).
-    fn a_run(steps_by: StepsBy) -> (Chats, ChatId) {
+    fn a_run() -> (Chats, ChatId) {
         let (mut chats, ops, _) = chats();
         let mut asked = message(1, &ops, "bob", None, "@alice fix pip");
         if let Body::Message(text) = &mut asked.body {
@@ -916,8 +874,6 @@ mod tests {
                 request: EventId(1),
                 place: PlaceName::machine(),
                 runs_in: player_two_core::event::RunsIn::Windows,
-                mode: player_two_core::event::Mode::Ask,
-                steps_by,
                 keep_going: false,
             }),
         ));
@@ -925,31 +881,8 @@ mod tests {
     }
 
     #[test]
-    fn a_step_notifies_whoever_answers_it() {
-        let prompt = |ops: &ChatId| {
-            run_event(
-                3,
-                ops,
-                "alice",
-                Body::RunPrompt(player_two_core::event::RunPrompt {
-                    run: EventId(2),
-                    prompt: "p1".to_owned(),
-                    what: "pip config set".to_owned(),
-                }),
-            )
-        };
-        let (chats, ops) = a_run(StepsBy::Owner);
-        let notice = chats.notice(&prompt(&ops)).expect("alice answers it");
-        assert_eq!(notice.title, "Your agent waits for your yes");
-        assert_eq!(notice.thread, Some(EventId(1)));
-        // Handed to bob, the step is his to answer, so alice's desk keeps quiet.
-        let (chats, ops) = a_run(StepsBy::Asker);
-        assert_eq!(chats.notice(&prompt(&ops)), None);
-    }
-
-    #[test]
     fn the_end_of_a_run_notifies_its_asker() {
-        let (mut chats, ops) = a_run(StepsBy::Owner);
+        let (mut chats, ops) = a_run();
         chats.apply(run_event(
             3,
             &ops,
@@ -983,7 +916,7 @@ mod tests {
 
     #[test]
     fn a_follow_up_notifies_the_runs_owner() {
-        let (mut chats, ops) = a_run(StepsBy::Owner);
+        let (mut chats, ops) = a_run();
         chats.apply(run_event(
             3,
             &ops,

@@ -142,7 +142,6 @@ export function Joined(): JSX.Element {
               setOpen(null);
               setThread(null);
             }}
-            mode={overview.default_mode}
             people={overview.people}
             busy={overview.busy}
           />
@@ -159,7 +158,6 @@ export function Joined(): JSX.Element {
                 setThread(null);
               }}
               onLeft={null}
-              mode={overview.default_mode}
               people={overview.people}
               busy={overview.busy}
             />

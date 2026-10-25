@@ -4,7 +4,7 @@ import type { JSX } from "react";
 
 import { Button } from "@/components/ui/button";
 
-import type { ChatId, Item, Mode } from "./desk.ts";
+import type { ChatId, Item } from "./desk.ts";
 import { Approval } from "./Approval.tsx";
 import { Run, Waiting } from "./Run.tsx";
 import { Text } from "./Text.tsx";
@@ -23,11 +23,9 @@ interface Props {
   readonly onThread: ((root: number) => void) | null;
   /** The person's places with a run going now. */
   readonly busy: readonly string[];
-  /** The mode the person's own agent runs at now. */
-  readonly mode: Mode;
 }
 
-export function Message({ item, me, chat, onThread, busy, mode }: Props): JSX.Element {
+export function Message({ item, me, chat, onThread, busy }: Props): JSX.Element {
   const open = (): void => {
     onThread?.(item.id);
   };
@@ -48,17 +46,11 @@ export function Message({ item, me, chat, onThread, busy, mode }: Props): JSX.El
       {item.runs.map((run) => (
         <Run key={run.id} run={run} chat={chat} me={me} />
       ))}
-      <Waiting tags={item.waiting} me={me} author={item.author} chat={chat} request={item.id} busy={busy} mode={mode} />
+      <Waiting tags={item.waiting} me={me} author={item.author} chat={chat} request={item.id} busy={busy} />
       {item.author !== me &&
         item.waiting.filter((tag) => tag.person === me).map((tag) => <Approval key={tag.place} chat={chat} request={item.id} place={tag.place} asker={item.author} follows={null} />)}
       {item.follows !== null && item.follows.owner === me && item.follows.state !== "working" && (
-        <Approval
-          chat={chat}
-          request={item.id}
-          place={item.follows.place}
-          asker={item.author}
-          follows={{ mode: item.follows.mode, steps_by: item.follows.steps_by, keep_going: false, runs_in: item.follows.runs_in }}
-        />
+        <Approval chat={chat} request={item.id} place={item.follows.place} asker={item.author} follows={{ keep_going: item.follows.keep_going, runs_in: item.follows.runs_in }} />
       )}
       {item.follows !== null && item.follows.owner !== me && item.runs.length === 0 && <p className="text-xs text-muted-foreground">◌ waiting for {item.follows.owner} to run it</p>}
       {item.unknown.map((line) => (

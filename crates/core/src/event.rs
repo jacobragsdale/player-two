@@ -68,12 +68,6 @@ pub enum Body {
     /// What the agent did.
     #[serde(rename = "run.activity")]
     RunActivity(RunActivity),
-    /// A step waiting for a yes.
-    #[serde(rename = "run.prompt")]
-    RunPrompt(RunPrompt),
-    /// The yes or no to a step.
-    #[serde(rename = "run.answer")]
-    RunAnswer(RunAnswer),
     /// The agent's answer.
     #[serde(rename = "run.result")]
     RunResult(RunResult),
@@ -95,8 +89,6 @@ impl Body {
             Self::RunDeclined(_) => "run.declined",
             Self::RunWithdrawn(_) => "run.withdrawn",
             Self::RunActivity(_) => "run.activity",
-            Self::RunPrompt(_) => "run.prompt",
-            Self::RunAnswer(_) => "run.answer",
             Self::RunResult(_) => "run.result",
             Self::RunEnded(_) => "run.ended",
             Self::RunStop(_) => "run.stop",
@@ -108,8 +100,6 @@ impl Body {
     pub fn run(&self) -> Option<EventId> {
         match self {
             Self::RunActivity(RunActivity { run, .. })
-            | Self::RunPrompt(RunPrompt { run, .. })
-            | Self::RunAnswer(RunAnswer { run, .. })
             | Self::RunResult(RunResult { run, .. })
             | Self::RunEnded(RunEnded { run, .. })
             | Self::RunStop(RunStop { run }) => Some(*run),
@@ -165,30 +155,6 @@ pub struct Tag {
     pub place: PlaceName,
 }
 
-/// How much a run may do.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
-pub enum Mode {
-    /// It may read and search, and nothing else.
-    #[serde(rename = "read-only")]
-    ReadOnly,
-    /// Each edit or command waits for a yes.
-    #[serde(rename = "ask")]
-    Ask,
-    /// It may do anything it asks to.
-    #[serde(rename = "full")]
-    Full,
-}
-
-/// Who answers a run's steps in ask mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
-#[serde(rename_all = "lowercase")]
-pub enum StepsBy {
-    /// The machine's owner.
-    Owner,
-    /// Whoever asked.
-    Asker,
-}
-
 /// Where on a machine a run happens: `windows`, or `wsl:<distro>`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Type)]
 #[serde(try_from = "String", into = "String")]
@@ -238,10 +204,6 @@ pub struct RunAccepted {
     pub place: PlaceName,
     /// Where on the machine.
     pub runs_in: RunsIn,
-    /// How much it may do.
-    pub mode: Mode,
-    /// Who answers its steps.
-    pub steps_by: StepsBy,
     /// Whether the asker's follow-ups in the thread run without a new click.
     pub keep_going: bool,
 }
@@ -284,28 +246,6 @@ pub struct Activity {
     /// What it printed or read, shown to everyone in the chat.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output: Option<String>,
-}
-
-/// A step waiting for a yes, in ask mode.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
-pub struct RunPrompt {
-    /// The run, by its `run.accepted`.
-    pub run: EventId,
-    /// The desk's id for this step.
-    pub prompt: String,
-    /// What the agent wants to do.
-    pub what: String,
-}
-
-/// The yes or no to a step.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
-pub struct RunAnswer {
-    /// The run, by its `run.accepted`.
-    pub run: EventId,
-    /// The step answered.
-    pub prompt: String,
-    /// Whether it may go ahead.
-    pub allow: bool,
 }
 
 /// The agent's answer.
@@ -353,9 +293,8 @@ mod tests {
     use serde_json::{Value, json};
 
     use super::{
-        Activity, Body, Ending, Event, EventId, MAX_TEXT, Message, Mode, RunAccepted, RunActivity,
-        RunAnswer, RunDeclined, RunEnded, RunPrompt, RunResult, RunStop, RunWithdrawn, RunsIn,
-        StepsBy, Tag,
+        Activity, Body, Ending, Event, EventId, MAX_TEXT, Message, RunAccepted, RunActivity,
+        RunDeclined, RunEnded, RunResult, RunStop, RunWithdrawn, RunsIn, Tag,
     };
     use crate::api::NewEvent;
     use crate::names::{ChatId, PersonName, PlaceName};
@@ -384,11 +323,9 @@ mod tests {
                     request: EventId(6),
                     place: PlaceName::machine(),
                     runs_in: RunsIn::Wsl("Ubuntu".to_owned()),
-                    mode: Mode::ReadOnly,
-                    steps_by: StepsBy::Asker,
                     keep_going: true,
                 }),
-                json!({"kind": "run.accepted", "body": {"request": 6, "place": "machine", "runs_in": "wsl:Ubuntu", "mode": "read-only", "steps_by": "asker", "keep_going": true}}),
+                json!({"kind": "run.accepted", "body": {"request": 6, "place": "machine", "runs_in": "wsl:Ubuntu", "keep_going": true}}),
             ),
             (
                 Body::RunDeclined(RunDeclined {
@@ -414,22 +351,6 @@ mod tests {
                     }],
                 }),
                 json!({"kind": "run.activity", "body": {"run": 7, "items": [{"id": "t1", "verb": "ran", "object": "pip config list", "outcome": "exit 0"}]}}),
-            ),
-            (
-                Body::RunPrompt(RunPrompt {
-                    run,
-                    prompt: "p1".to_owned(),
-                    what: "Run pip config set".to_owned(),
-                }),
-                json!({"kind": "run.prompt", "body": {"run": 7, "prompt": "p1", "what": "Run pip config set"}}),
-            ),
-            (
-                Body::RunAnswer(RunAnswer {
-                    run,
-                    prompt: "p1".to_owned(),
-                    allow: false,
-                }),
-                json!({"kind": "run.answer", "body": {"run": 7, "prompt": "p1", "allow": false}}),
             ),
             (
                 Body::RunResult(RunResult {
@@ -495,8 +416,8 @@ mod tests {
     fn unknown_kinds_and_bad_values_are_refused() {
         for bad in [
             json!({"kind": "message.edit", "body": {}}),
-            json!({"kind": "run.accepted", "body": {"request": 1, "place": "machine", "runs_in": "mac", "mode": "ask", "steps_by": "owner", "keep_going": false}}),
-            json!({"kind": "run.accepted", "body": {"request": 1, "place": "machine", "runs_in": "windows", "mode": "sudo", "steps_by": "owner", "keep_going": false}}),
+            json!({"kind": "run.accepted", "body": {"request": 1, "place": "machine", "runs_in": "mac", "keep_going": false}}),
+            json!({"kind": "run.prompt", "body": {"run": 7, "prompt": "p1", "what": "Run pip config set"}}),
             json!({"kind": "message", "body": {"text": "hi", "tags": [{"person": "Bob", "place": "machine"}]}}),
         ] {
             assert!(

@@ -112,8 +112,8 @@ export type Event =
 chat: ChatId } | 
 /**
  *  Something worth a notification arrived: a direct message, a tag of the person or their
- *  places, a follow-up waiting for their click, a step waiting for their yes, or the end of
- *  a run they asked for. The app shows it while the window is not in front.
+ *  places, a follow-up waiting for their click, or the end of a run they asked for. The app
+ *  shows it while the window is not in front.
  */
 { type: "notify"; 
 /**  Where. */
@@ -160,15 +160,6 @@ export type Item = {
 	unknown: string[],
 };
 
-/**  How much a run may do. */
-export type Mode = 
-/**  It may read and search, and nothing else. */
-"read-only" | 
-/**  Each edit or command waits for a yes. */
-"ask" | 
-/**  It may do anything it asks to. */
-"full";
-
 /**  The chat list, the people and how the connection stands. */
 export type Overview = {
 	/**  Who this machine joined as. */
@@ -181,8 +172,6 @@ export type Overview = {
 	people: Person[],
 	/**  Every channel, joined or not. */
 	channels: ChannelInfo[],
-	/**  The mode the person's own tags run at. */
-	default_mode: Mode,
 	/**  The person's places with a run going now. */
 	busy: PlaceName[],
 };
@@ -245,18 +234,6 @@ export type PlacesView = {
 	wsl: boolean,
 };
 
-/**  One step a run asked about. */
-export type PromptView = {
-	/**  The step's id. */
-	id: string,
-	/**  What the agent wants to do. */
-	what: string,
-	/**  The yes or no, once given. */
-	allow: boolean | null,
-	/**  Who gave it. */
-	by: PersonName | null,
-};
-
 /**  Something the window asks of the desk. */
 export type Request = 
 /**  Asks the desk to say who it is. */
@@ -288,13 +265,8 @@ chat: ChatId;
 /**  In which thread, if any. */
 thread: number | null; 
 /**  What it says. */
-text: string; 
-/**  The mode for the person's own agent, which becomes their default; none keeps it. */
-mode: Mode | null } | 
-/**
- *  Runs a request of the person's own that waited while its place was busy, at their
- *  default mode.
- */
+text: string } | 
+/**  Runs a request of the person's own that waited while its place was busy. */
 { type: "run_now"; 
 /**  The chat it is in. */
 chat: ChatId; 
@@ -313,18 +285,6 @@ chat: ChatId;
 thread: number; 
 /**  The run, by its `run.accepted`. */
 run: number } | 
-/**  Answers a step a run waits on. */
-{ type: "answer"; 
-/**  The chat the run is in. */
-chat: ChatId; 
-/**  The thread its events are in. */
-thread: number; 
-/**  The run. */
-run: number; 
-/**  The step. */
-prompt: string; 
-/**  Whether it may go ahead. */
-allow: boolean } | 
 /**  Marks everything in a chat as read. */
 { type: "read"; 
 /**  Which chat. */
@@ -394,12 +354,8 @@ chat: ChatId;
 request: number; 
 /**  The place it runs at. */
 place: PlaceName; 
-/**  How much it may do. */
-mode: Mode; 
 /**  Where on the machine. */
 runs_in: RunsIn; 
-/**  Who answers its steps. */
-steps_by: StepsBy; 
 /**  Whether the asker's follow-ups run without a new click. */
 keep_going: boolean } | 
 /**  Declines a request to this person. */
@@ -491,22 +447,16 @@ export type RunView = {
 	place: PlaceName,
 	/**  Where on the machine. */
 	runs_in: RunsIn,
-	/**  How much it may do. */
-	mode: Mode,
-	/**  Who answers its steps. */
-	steps_by: StepsBy,
+	/**  Whether its asker's follow-ups run without a new click. */
+	keep_going: boolean,
 	/**  How it stands. */
 	state: RunState,
 	/**  Why it failed or was stopped, when it says. */
 	reason: string | null,
 	/**  What it did, each item as it now stands, in the order they began. */
 	activity: Activity[],
-	/**  The steps it asked about. */
-	prompts: PromptView[],
 	/**  The agent's answer, as Markdown. */
 	result: string | null,
-	/**  Whether this person may answer its steps. */
-	may_answer: boolean,
 	/**  Whether this person may stop it: its owner, or its asker. */
 	may_stop: boolean,
 	/**  Whether the run is this machine's, so this person may stop it. */
@@ -527,13 +477,6 @@ export type SharedFolder = {
 	/**  Why it cannot run now, when it cannot. It is not advertised until it can. */
 	unavailable: string | null,
 };
-
-/**  Who answers a run's steps in ask mode. */
-export type StepsBy = 
-/**  The machine's owner. */
-"owner" | 
-/**  Whoever asked. */
-"asker";
 
 /**  One tag in a message: `@person` or `@person/place`. */
 export type Tag = {

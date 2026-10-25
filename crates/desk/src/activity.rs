@@ -13,28 +13,6 @@ pub const OUTPUT: usize = 8_000;
 /// The most characters of an object, on one line.
 const OBJECT: usize = 200;
 
-/// Whether a mode lets a kind of action go ahead without asking.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Reach {
-    /// It only looks: reading, searching, thinking, fetching.
-    Looks,
-    /// It may change something: editing, deleting, moving, running, or anything else.
-    Changes,
-}
-
-impl Reach {
-    /// The reach of a kind of tool call; a kind not known counts as changing.
-    #[must_use]
-    pub fn of(kind: Option<ToolKind>) -> Self {
-        match kind {
-            Some(ToolKind::Read | ToolKind::Search | ToolKind::Think | ToolKind::Fetch) => {
-                Self::Looks
-            }
-            _ => Self::Changes,
-        }
-    }
-}
-
 /// A tool call as described so far: each update says only what changed.
 #[derive(Debug, Clone, Default)]
 struct Call {
@@ -93,27 +71,6 @@ impl Calls {
             state.raw_output.clone_from(&fields.raw_output);
         }
         item(&id, state)
-    }
-
-    /// What a tool call the agent asks about would do, in one line, and how far it reaches.
-    #[must_use]
-    pub fn asking(&self, update: &ToolCallUpdate) -> (String, Reach) {
-        let id = update.tool_call_id.to_string();
-        let mut state = self.calls.get(&id).cloned().unwrap_or_default();
-        if let Some(kind) = update.fields.kind {
-            state.kind = Some(kind);
-        }
-        if let Some(title) = &update.fields.title {
-            state.title.clone_from(title);
-        }
-        if update.fields.raw_input.is_some() {
-            state.raw_input.clone_from(&update.fields.raw_input);
-        }
-        let item = item(&id, &state);
-        (
-            format!("{} {}", item.verb, item.object),
-            Reach::of(state.kind),
-        )
     }
 }
 
@@ -237,7 +194,7 @@ mod tests {
         ToolCallUpdateFields, ToolKind,
     };
 
-    use super::{Calls, Reach};
+    use super::Calls;
 
     #[test]
     fn a_command_reads_as_ran_its_command_and_how_it_ended() {
@@ -268,7 +225,7 @@ mod tests {
     }
 
     #[test]
-    fn an_edit_shows_its_diff_and_counts_as_changing() {
+    fn an_edit_shows_its_diff() {
         let mut calls = Calls::default();
         let diff = ToolCallContent::Diff(Diff::new("pip.conf", "new").old_text("old".to_owned()));
         let edited = calls.started(
@@ -282,18 +239,5 @@ mod tests {
             ("edited", "Edit pip.conf")
         );
         assert_eq!(edited.output.as_deref(), Some("--- pip.conf\n-old\n+new"));
-        let ask = ToolCallUpdate::new(
-            "t3",
-            ToolCallUpdateFields::new()
-                .kind(ToolKind::Execute)
-                .title("Run".to_owned())
-                .raw_input(serde_json::json!({"command": "rm -rf build"})),
-        );
-        assert_eq!(
-            calls.asking(&ask),
-            ("ran rm -rf build".to_owned(), Reach::Changes)
-        );
-        assert_eq!(Reach::of(Some(ToolKind::Read)), Reach::Looks);
-        assert_eq!(Reach::of(None), Reach::Changes);
     }
 }

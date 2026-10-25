@@ -33,7 +33,7 @@ use looking::Where;
 use places::{Folder, Looked, Settings};
 use player_two_core::api::{NewEvent, PlaceInfo};
 use player_two_core::event::RunsIn;
-use player_two_core::event::{Body, Event, EventId, Message, Mode, RunAnswer, StepsBy};
+use player_two_core::event::{Body, Event, EventId, Message};
 use player_two_core::join_code::JoinCode;
 use player_two_core::names::{ChannelName, ChatId, PersonName, PlaceName};
 use tokio::sync::{Notify, mpsc};
@@ -88,8 +88,6 @@ struct Inner {
     /// Runs stopped, so that their ending says so, with who stopped each when it was not the
     /// person.
     stopped: Mutex<std::collections::HashMap<EventId, Option<PersonName>>>,
-    /// Numbers the steps put to a person.
-    prompts: std::sync::atomic::AtomicU64,
     /// The folder dialog, once the app shell has given one.
     picker: Mutex<Option<Picker>>,
     /// Held while the desk looks for agents and folders, so that looks take turns.
@@ -134,7 +132,6 @@ impl Desk {
             wake: Notify::new(),
             runs: Mutex::new(runs::Runs::default()),
             stopped: Mutex::new(std::collections::HashMap::new()),
-            prompts: std::sync::atomic::AtomicU64::new(1),
             picker: Mutex::new(None),
             looking: tokio::sync::Mutex::new(()),
         };
@@ -206,13 +203,8 @@ impl Desk {
                 self.older(&chat).await?;
                 Ok(Response::Done)
             }
-            Request::Send {
-                chat,
-                thread,
-                text,
-                mode,
-            } => {
-                self.send(chat, thread, text, mode).await?;
+            Request::Send { chat, thread, text } => {
+                self.send(chat, thread, text).await?;
                 Ok(Response::Done)
             }
             Request::RunNow {
@@ -242,21 +234,6 @@ impl Desk {
                     )
                     .await?;
                 }
-                Ok(Response::Done)
-            }
-            Request::Answer {
-                chat,
-                thread,
-                run,
-                prompt,
-                allow,
-            } => {
-                self.post(
-                    &chat,
-                    Some(thread),
-                    Body::RunAnswer(RunAnswer { run, prompt, allow }),
-                )
-                .await?;
                 Ok(Response::Done)
             }
             Request::Read { chat } => {
@@ -394,9 +371,7 @@ impl Desk {
                 chat,
                 request,
                 place,
-                mode,
                 runs_in,
-                steps_by,
                 keep_going,
             } => {
                 let asked = self.event(&chat, request)?;
@@ -411,8 +386,6 @@ impl Desk {
                     text,
                     place,
                     runs_in,
-                    mode,
-                    steps_by,
                     keep_going,
                 })
                 .await?;
@@ -579,8 +552,6 @@ impl Desk {
             text: message.text.clone(),
             place: run.place.clone(),
             runs_in: run.runs_in.clone(),
-            mode: run.mode,
-            steps_by: run.steps_by,
             keep_going: true,
         };
         if let Err(error) = self.start_run(order).await {
@@ -613,9 +584,6 @@ impl Desk {
             channels: chats
                 .map(|chats| chats.channels().to_vec())
                 .unwrap_or_default(),
-            default_mode: self
-                .settings()
-                .map_or(Mode::Ask, |settings| settings.default_mode),
             busy: self.runs_going_at(),
         }
     }
@@ -667,7 +635,7 @@ impl Desk {
                 body: body.clone(),
             })
             .await?;
-        let event = {
+        {
             let mut state = self.state();
             let chats = state
                 .chats
@@ -681,10 +649,8 @@ impl Desk {
                 ts: posted.ts,
                 body,
             };
-            chats.apply(event.clone());
-            event
-        };
-        self.answered(&event);
+            chats.apply(event);
+        }
         self.tell(ui::Event::Chat { chat: chat.clone() });
         self.tell(ui::Event::Overview);
         Ok(posted.id)
@@ -701,7 +667,6 @@ impl Desk {
         chat: ChatId,
         thread: Option<EventId>,
         text: String,
-        mode: Option<Mode>,
     ) -> anyhow::Result<()> {
         let text = text.trim_end().to_owned();
         anyhow::ensure!(!text.trim().is_empty(), "there is nothing to send");
@@ -713,12 +678,7 @@ impl Desk {
                 .context("the chats have not loaded yet")?;
             (chats.me().clone(), tags::read(&text, chats.people()))
         };
-        let mut settings = self.settings()?;
-        if let Some(mode) = mode.filter(|mode| *mode != settings.default_mode) {
-            // Switching the mode in the message box makes it the default.
-            settings.default_mode = mode;
-            self.inner.files.write("settings.json", &settings)?;
-        }
+        let settings = self.settings()?;
         let body = Body::Message(Message {
             text: text.clone(),
             tags: tags.clone(),
@@ -748,8 +708,6 @@ impl Desk {
                 text: text.clone(),
                 place: run.place,
                 runs_in: run.runs_in,
-                mode: settings.default_mode,
-                steps_by: StepsBy::Owner,
                 keep_going: false,
             })
             .await?;
@@ -764,7 +722,7 @@ impl Desk {
         Ok(())
     }
 
-    /// Runs the person's own request at one of their places, at their default mode.
+    /// Runs the person's own request at one of their places.
     async fn run_own(
         &self,
         request: &Event,
@@ -785,8 +743,6 @@ impl Desk {
             text: text.to_owned(),
             place,
             runs_in,
-            mode: settings.default_mode,
-            steps_by: StepsBy::Owner,
             keep_going: false,
         })
         .await
@@ -1019,7 +975,6 @@ impl Desk {
                 incoming = stream.next() => match incoming? {
                     Some(Incoming::Event(event)) => {
                         let chat = event.chat.clone();
-                        self.answered(&event);
                         self.asked_to_stop(&event);
                         let follow_up = event.clone();
                         let notice = self.state().chats.as_mut().and_then(|chats| {

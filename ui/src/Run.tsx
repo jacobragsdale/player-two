@@ -1,4 +1,4 @@
-/** A run under the message it answers: how it stands, what the agent did, the steps it waits on, and its answer. Everything an agent printed is drawn as text; its answer as safe Markdown. */
+/** A run under the message it answers: how it stands, what the agent did, and its answer. Everything an agent printed is drawn as text; its answer as safe Markdown. */
 
 import { cn } from "cn";
 import { useState } from "react";
@@ -6,11 +6,10 @@ import type { JSX } from "react";
 
 import { Button } from "@/components/ui/button";
 
-import type { Activity, ChatId, Mode, PromptView, RunView, Tag } from "./desk.ts";
+import type { Activity, ChatId, RunView, Tag } from "./desk.ts";
 import { ask, problem } from "./deskClient.ts";
 import { Markdown } from "./Markdown.tsx";
 
-const MODE_WORDS = { "read-only": "read-only", ask: "asks before changes", full: "full" } as const;
 /** How many of its latest steps a working run shows. */
 const LATEST = 5;
 
@@ -29,7 +28,7 @@ function stateLine(run: RunView, me: string): string {
   const where = whereItRuns(run, me);
   switch (run.state) {
     case "working":
-      return `${agent} is working on ${where} · ${MODE_WORDS[run.mode]}`;
+      return `${agent} is working on ${where}`;
     case "done":
       return `${agent} finished on ${where}`;
     case "stopped":
@@ -57,66 +56,6 @@ function Item({ item }: { readonly item: Activity }): JSX.Element {
         </details>
       )}
     </li>
-  );
-}
-
-function Prompt({ prompt, run, chat, me }: { readonly prompt: PromptView; readonly run: RunView; readonly chat: ChatId; readonly me: string }): JSX.Element {
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const answer = (allow: boolean): void => {
-    setBusy(true);
-    ask({ type: "answer", chat, thread: run.thread, run: run.id, prompt: prompt.id, allow }).then(
-      () => {
-        setBusy(false);
-      },
-      (failure: unknown) => {
-        setBusy(false);
-        setError(problem(failure));
-      }
-    );
-  };
-  if (prompt.allow !== null) {
-    const by = prompt.by === me ? "you" : (prompt.by ?? "");
-    return (
-      <p className="text-xs text-muted-foreground">
-        {prompt.allow ? "✓" : "✗"} {prompt.what} · {prompt.allow ? "allowed" : "refused"} by {by}
-      </p>
-    );
-  }
-  const waiting = run.state === "working";
-  return (
-    <div className="my-1 rounded-md border border-warn/60 p-2">
-      <p className="text-sm">
-        The agent wants to: <span className="font-mono text-xs">{prompt.what}</span>
-      </p>
-      {waiting && run.may_answer && (
-        <div className="mt-1 flex gap-2">
-          <Button
-            type="button"
-            size="xs"
-            disabled={busy}
-            onClick={() => {
-              answer(true);
-            }}
-          >
-            Allow
-          </Button>
-          <Button
-            type="button"
-            size="xs"
-            variant="outline"
-            disabled={busy}
-            onClick={() => {
-              answer(false);
-            }}
-          >
-            Refuse
-          </Button>
-        </div>
-      )}
-      {waiting && !run.may_answer && <p className="text-xs text-muted-foreground">waiting for {run.owner} to answer</p>}
-      {error !== "" && <p className="text-xs text-destructive">{error}</p>}
-    </div>
   );
 }
 
@@ -188,18 +127,13 @@ export function Run({ run, chat, me }: { readonly run: RunView; readonly chat: C
       </div>
       {error !== "" && <p className="text-xs text-destructive">{error}</p>}
       <Steps activity={run.activity} working={run.state === "working"} />
-      {run.prompts.map((prompt) => (
-        <Prompt key={prompt.id} prompt={prompt} run={run} chat={chat} me={me} />
-      ))}
       {run.result !== null && <Markdown text={run.result} />}
     </section>
   );
 }
 
-const MODE_NAMES = { "read-only": "Read-only", ask: "Ask", full: "Full" } as const;
-
-/** The line under a tag of the person's own that found its place busy: Run now, once the place is free, at their mode then. */
-function Busy({ tag, chat, request, busy, mode }: { readonly tag: Tag; readonly chat: ChatId; readonly request: number; readonly busy: boolean; readonly mode: Mode }): JSX.Element {
+/** The line under a tag of the person's own that found its place busy: Run now, once the place is free. */
+function Busy({ tag, chat, request, busy }: { readonly tag: Tag; readonly chat: ChatId; readonly request: number; readonly busy: boolean }): JSX.Element {
   const [error, setError] = useState("");
   const place = tag.place === "machine" ? "computer" : tag.place;
   const runNow = (): void => {
@@ -214,7 +148,7 @@ function Busy({ tag, chat, request, busy, mode }: { readonly tag: Tag; readonly 
         <span>◌ {busy ? `your ${place} is busy, so this is waiting until the run before it ends` : `your ${place} was busy, so this waited`}</span>
         {!busy && (
           <Button type="button" variant="ghost" size="xs" onClick={runNow}>
-            Run now · {MODE_NAMES[mode]}
+            Run now
           </Button>
         )}
       </p>
@@ -231,12 +165,10 @@ interface WaitingProps {
   readonly request: number;
   /** The person's places with a run going now. */
   readonly busy: readonly string[];
-  /** The mode the person's own agent runs at now. */
-  readonly mode: Mode;
 }
 
 /** A line for each tag nobody has answered yet, with Withdraw for whoever asked, and Run now for a tag of the person's own that found its place busy. */
-export function Waiting({ tags, me, author, chat, request, busy, mode }: WaitingProps): JSX.Element | null {
+export function Waiting({ tags, me, author, chat, request, busy }: WaitingProps): JSX.Element | null {
   const [error, setError] = useState("");
   if (tags.length === 0) {
     return null;
@@ -250,7 +182,7 @@ export function Waiting({ tags, me, author, chat, request, busy, mode }: Waiting
     <>
       {tags.map((tag) =>
         tag.person === me && author === me ? (
-          <Busy key={`${tag.person}/${tag.place}`} tag={tag} chat={chat} request={request} busy={busy.includes(tag.place)} mode={mode} />
+          <Busy key={`${tag.person}/${tag.place}`} tag={tag} chat={chat} request={request} busy={busy.includes(tag.place)} />
         ) : (
           <p key={`${tag.person}/${tag.place}`} className="flex items-center gap-2 text-xs text-muted-foreground">
             <span>◌ waiting for {tag.person === me ? "you" : tag.person} to approve</span>

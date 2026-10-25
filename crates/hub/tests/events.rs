@@ -7,14 +7,10 @@ fn message(chat: &str, text: &str, tags: Value) -> Value {
     json!({"chat": chat, "kind": "message", "body": {"text": text, "tags": tags}})
 }
 
-fn accepted(chat: &str, request: i64, steps_by: &str) -> Value {
+fn accepted(chat: &str, request: i64) -> Value {
     json!({"chat": chat, "kind": "run.accepted", "body": {
-        "request": request, "place": "machine", "runs_in": "windows", "mode": "ask", "steps_by": steps_by, "keep_going": false
+        "request": request, "place": "machine", "runs_in": "windows", "keep_going": false
     }})
-}
-
-fn answer(chat: &str, run: i64) -> Value {
-    json!({"chat": chat, "kind": "run.answer", "body": {"run": run, "prompt": "p1", "allow": true}})
 }
 
 #[tokio::test]
@@ -51,39 +47,18 @@ async fn a_request_and_its_run_follow_the_rules() {
 
     // Only the tagged place's owner may accept.
     assert_eq!(
-        hub.post(&alice, "/events", &accepted(chat, request, "owner"))
+        hub.post(&alice, "/events", &accepted(chat, request))
             .await
             .status,
         403
     );
-    let run = hub
-        .post(&bob, "/events", &accepted(chat, request, "owner"))
-        .await;
+    let run = hub.post(&bob, "/events", &accepted(chat, request)).await;
     let run = run.body["id"].as_i64().expect("an id");
 
-    // The run's reports are the owner's; the asker answers steps only when handed them.
+    // The run's reports are the owner's.
     let activity = json!({"chat": chat, "kind": "run.activity", "body": {"run": run, "items": []}});
     assert_eq!(hub.post(&bob, "/events", &activity).await.status, 200);
     assert_eq!(hub.post(&alice, "/events", &activity).await.status, 403);
-    assert_eq!(
-        hub.post(&alice, "/events", &answer(chat, run)).await.status,
-        403
-    );
-    assert_eq!(
-        hub.post(&bob, "/events", &answer(chat, run)).await.status,
-        200
-    );
-
-    let handed = hub
-        .post(&bob, "/events", &accepted(chat, request, "asker"))
-        .await;
-    let handed = handed.body["id"].as_i64().expect("an id");
-    assert_eq!(
-        hub.post(&alice, "/events", &answer(chat, handed))
-            .await
-            .status,
-        200
-    );
 
     // The asker may ask for the run to stop; its owner stops it themselves.
     let stop = json!({"chat": chat, "kind": "run.stop", "body": {"run": run}});

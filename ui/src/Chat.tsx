@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 
 import { LeaveChannel } from "./Channels.tsx";
 import { Composer } from "./Composer.tsx";
-import type { ChatId, ChatView, Mode, Person, RunView } from "./desk.ts";
+import type { ChatId, ChatView, Person } from "./desk.ts";
 import { ask, problem } from "./deskClient.ts";
 import { useChat } from "./hooks.ts";
 import { Message } from "./Message.tsx";
@@ -23,19 +23,10 @@ interface Props {
   readonly onClose: (() => void) | null;
   /** Called once the person left this channel; null in a thread. */
   readonly onLeft: (() => void) | null;
-  /** The mode the person's own agent runs at by default. */
-  readonly mode: Mode;
   /** Everyone who can be tagged. */
   readonly people: readonly Person[];
   /** The person's places with a run going now. */
   readonly busy: readonly string[];
-}
-
-/** Whether a follow-up written in this thread now goes to the person's own agent: the newest run of what they asked here is theirs. */
-export function followsOwnRun(view: ChatView, me: string): boolean {
-  const runs = view.items.filter((item) => item.author === me).flatMap((item) => item.runs);
-  const newest = runs.reduce<RunView | null>((latest, run) => (latest === null || run.id > latest.id ? run : latest), null);
-  return newest?.mine ?? false;
 }
 
 /** How long ago a time was, in round words: "just now", "5 min ago", "2 h ago", "3 days ago". */
@@ -112,7 +103,7 @@ function Older({ chat }: { readonly chat: ChatId }): JSX.Element {
   );
 }
 
-export function Chat({ chat, me, thread, onThread, onClose, onLeft, mode, people, busy }: Props): JSX.Element {
+export function Chat({ chat, me, thread, onThread, onClose, onLeft, people, busy }: Props): JSX.Element {
   const view = useChat(chat, thread);
   const list = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
@@ -164,21 +155,11 @@ export function Chat({ chat, me, thread, onThread, onClose, onLeft, mode, people
             {item.id === view.first_unread && (
               <p className="mx-4 my-1 flex items-center gap-2 text-xs text-warn before:flex-1 before:border-t before:border-warn after:flex-1 after:border-t after:border-warn">new</p>
             )}
-            <Message item={item} me={me} chat={chat} onThread={thread === null ? onThread : null} busy={busy} mode={mode} />
+            <Message item={item} me={me} chat={chat} onThread={thread === null ? onThread : null} busy={busy} />
           </div>
         ))}
       </div>
-      <Composer
-        key={mode}
-        chat={chat}
-        thread={thread}
-        me={me}
-        ownThread={thread !== null && followsOwnRun(view, me)}
-        mode={mode}
-        people={people}
-        members={view.members}
-        placeholder={thread === null ? `Message ${view.title}` : "Reply in the thread"}
-      />
+      <Composer chat={chat} thread={thread} people={people} members={view.members} placeholder={thread === null ? `Message ${view.title}` : "Reply in the thread"} />
     </section>
   );
 }

@@ -13,7 +13,6 @@ fn send(chat: &str, text: &str) -> Request {
         chat: id(chat),
         thread: None,
         text: text.to_owned(),
-        mode: None,
     }
 }
 
@@ -67,7 +66,6 @@ async fn two_desks_chat_directly_and_in_a_channel() {
         chat: id("alice+bob"),
         thread: Some(question),
         text: "on it".to_owned(),
-        mode: None,
     };
     assert_eq!(alice.handle(reply).await, Ok(Response::Done));
     until_texts(
